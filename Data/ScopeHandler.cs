@@ -70,3 +70,29 @@ public static class ScopeHandler {
     }
     
 }
+
+public class Scopes {
+    public string ScopesString { get; init; }
+
+    public IEnumerable<ScopeHandler.ScopesEnum> EnumArray =>
+        ScopeHandler.ScopesIdsToEnumArray(ScopeHandler.StringToListOfScopeIds(ScopesString));
+
+    public IEnumerable<string> IdArray => ScopeHandler.StringToListOfScopeIds(ScopesString);
+
+    public static Scopes FromString(string scopeString) {
+        return new Scopes(scopeString);
+    }
+    
+    public static Scopes FromListOfScopeIds(IEnumerable<string> scopeIds) {
+        return FromString(ScopeHandler.ListOfScopeIdsToString(scopeIds));
+    }
+    
+    public static Scopes FromListOfScopeEnums(IEnumerable<ScopeHandler.ScopesEnum> scopeEnums) {
+        return FromListOfScopeIds(ScopeHandler.ScopesEnumToIdsArray(scopeEnums));
+    }
+
+    public Scopes(string scopesString) {
+        ScopesString = ScopeHandler.ListOfScopeIdsToString(ScopeHandler.FilterInvalidScopes(ScopeHandler.StringToListOfScopeIds(scopesString)));
+    }
+
+}

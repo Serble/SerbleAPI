@@ -4,7 +4,7 @@ using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 
-namespace SerbleAPI.API.v1; 
+namespace SerbleAPI.API.v1.Account; 
 
 [ApiController]
 [Route("api/v1/auth")]

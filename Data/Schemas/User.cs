@@ -53,6 +53,15 @@ public class User {
         Logger.Debug($"Obtained Authorized Apps for {Username}");
     }
 
+    public void AuthorizeApp(string appId, string scopes) {
+        AuthorizedApp app = new (appId, scopes);
+        AuthorizeApp(app);
+    }
+
+    public void AuthorizeApp(AuthorizedApp app) {
+        Program.StorageService!.AddAuthorizedApp(Id, app);
+    }
+
     public void RegisterChanges() {
         Logger.Debug($"Registering changes to user: '{Username}' with id: '{Id}'");
         

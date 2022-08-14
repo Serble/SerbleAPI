@@ -15,7 +15,8 @@ public static class TokenHandler {
 
     public static string GenerateLoginToken(string userid) {
         Dictionary<string, string> claims = new() {
-            { "userid", userid }
+            { "userid", userid },
+            { "type", "user" }
         };
         return GenerateToken(claims);
     }
@@ -28,7 +29,10 @@ public static class TokenHandler {
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid")) {
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type")) {
+                return false;
+            }
+            if (claims["type"] != "user") {
                 return false;
             }
             Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
@@ -42,13 +46,142 @@ public static class TokenHandler {
         }
     }
     
-    private static string GenerateToken(Dictionary<string, string> claims) {
+    // Authorization Tokens
+    // Claims:
+    // - userid
+    
+    public static string GenerateAuthorizationToken(string userId, string appId, string scopeString) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "appid", appId },
+            { "scope", scopeString },
+            { "type", "oauth-authorization" },
+        };
+        return GenerateToken(claims);
+    }
+    
+    public static bool ValidateAuthorizationToken(string token, string appId, out User? user, out string scopeString) {
+        user = null;
+        scopeString = "";
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                Logger.Debug(validationFailMsg);
+                return false;
+            }
+            claims.ThrowIfNull();
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("appid") || !claims.ContainsKey("scope")) {
+                return false;
+            }
+            if (claims["type"] != "oauth-authorization") {
+                return false;
+            }
+            if (claims["appid"] != appId) {
+                return false;
+            }
+            Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
+            gottenUser.ThrowIfNull();
+            user = gottenUser;
+            scopeString = claims["scope"];
+            return true;
+        }
+        catch (Exception e) {
+            Logger.Debug("Token validation failed: " + e);
+            return false;
+        }
+    }
+    
+    // Access Tokens
+    // Claims:
+    // - userid
+    public static string GenerateAccessToken(string userId, string scope) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "scope", scope},
+            { "type", "oauth-access" }
+        };
+        return GenerateToken(claims, 1);
+    }
+    
+    public static bool ValidateAccessToken(string token, out User? user, out string scope) {
+        user = null;
+        scope = "";
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                Logger.Debug(validationFailMsg);
+                return false;
+            }
+            claims.ThrowIfNull();
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("scope")) {
+                return false;
+            }
+            if (claims["type"] != "oauth-access") {
+                return false;
+            }
+            Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
+            gottenUser.ThrowIfNull();
+            user = gottenUser;
+            scope = claims["scope"];
+            return true;
+        }
+        catch (Exception e) {
+            Logger.Debug("Token validation failed: " + e);
+            return false;
+        }
+    }
+    
+    // Refresh Tokens
+    // Claims:
+    // - userid
+    // - appid
+    // - scope
+    public static string GenerateRefreshToken(string userId, string appId, string scope) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "appid", appId },
+            { "scope", scope},
+            { "type", "oauth-refresh" }
+        };
+        return GenerateToken(claims);
+    }
+    
+    public static bool ValidateRefreshToken(string token, string appId, out User? user, out string scope) {
+        user = null;
+        scope = "";
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                Logger.Debug(validationFailMsg);
+                return false;
+            }
+            claims.ThrowIfNull();
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("appid") || !claims.ContainsKey("scope")) {
+                return false;
+            }
+            if (claims["type"] != "oauth-refresh") {
+                return false;
+            }
+            if (claims["appid"] != appId) {
+                return false;
+            }
+            Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
+            gottenUser.ThrowIfNull();
+            user = gottenUser;
+            scope = claims["scope"];
+            return true;
+        }
+        catch (Exception e) {
+            Logger.Debug("Token validation failed: " + e);
+            return false;
+        }
+    }
+    
+
+    private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 8760) {
         string mySecret = Program.Config!["token_secret"];
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();
         SecurityTokenDescriptor tokenDescriptor = new() {
             Subject = new ClaimsIdentity(claims.Select(c => new Claim(c.Key, c.Value)).ToArray()),
-            Expires = DateTime.Now.AddYears(1),
+            Expires = DateTime.Now.AddHours(expirationInHours),
             Issuer = Program.Config!["token_issuer"],
             Audience = Program.Config!["token_audience"],
             SigningCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature),

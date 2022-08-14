@@ -4,7 +4,7 @@ using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 
-namespace SerbleAPI.API.v1;
+namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/account/")]
@@ -12,32 +12,20 @@ public class AccountController : ControllerManager {
     
     [HttpGet]
     public ActionResult<SanitisedUser> Get([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out object? userObj, out string? msg)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
 
-        if (scopes == null! || userObj == null!) {
-            Logger.Debug("NULL");
-            return Unauthorized();
-        }
-        User user = (User) userObj;
-
-        return new SanitisedUser(user, scopes);
+        return new SanitisedUser(target, scopes);
     }
     
     [HttpDelete]
     public ActionResult Delete([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out object? userObj, out string? msg)) {
+        if (!authorizationHeader.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
-        
-        if (scopes == null! || userObj == null!) {
-            Logger.Debug("NULL");
-            return Unauthorized();
-        }
-        User user = (User) userObj;
 
         IEnumerable<ScopeHandler.ScopesEnum> scopesListEnum = ScopeHandler.ScopesIdsToEnumArray(ScopeHandler.StringToListOfScopeIds(scopes));
         if (!scopesListEnum.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
@@ -46,7 +34,7 @@ public class AccountController : ControllerManager {
         }
         
         // Delete the user's account
-        Program.StorageService!.DeleteUser(user.Id);
+        Program.StorageService!.DeleteUser(target.Id);
         return Ok();
     }
 
@@ -68,18 +56,12 @@ public class AccountController : ControllerManager {
 
     [HttpPatch]
     public ActionResult<SanitisedUser> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out object? userObj, out string? msg)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
 
-        if (scopes == null! || userObj == null!) {
-            Logger.Debug("NULL");
-            return Unauthorized();
-        }
-        User user = (User) userObj;
-
-        User newUser = user;
+        User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
             if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg)) {
                 return BadRequest(applyErrorMsg);
@@ -88,7 +70,7 @@ public class AccountController : ControllerManager {
         }
         Program.StorageService!.UpdateUser(newUser);
 
-        return new SanitisedUser(user, scopes);
+        return new SanitisedUser(target, scopes);
     }
 
     [HttpOptions]
