@@ -5,7 +5,7 @@ namespace SerbleAPI.API.v1;
 
 [ApiController]
 [Route("api/v1/services")]
-public class ServicesController : Controller {
+public class ServicesController : ControllerManager {
     
     [HttpGet]
     public async Task<ActionResult<Service[]>> GetAllServices() {
