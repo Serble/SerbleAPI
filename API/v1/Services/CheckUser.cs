@@ -5,7 +5,7 @@ namespace SerbleAPI.API.v1;
 
 [ApiController]
 [Route("api/v1/checkuser")]
-public class CheckUser : Controller {
+public class CheckUser : ControllerManager {
     
     [HttpGet]
     public IActionResult Get([FromQuery] string redirect, [FromQuery] bool redirectOnFail = false) {
