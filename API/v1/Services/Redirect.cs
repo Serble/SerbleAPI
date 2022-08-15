@@ -4,7 +4,7 @@ namespace SerbleAPI.API.v1;
 
 [ApiController]
 [Route("/api/v1/redirect")]
-public class Redirect : Controller {
+public class Redirect : ControllerManager {
     
     [HttpGet]
     public IActionResult Get([FromQuery] string to) {
