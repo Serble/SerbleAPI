@@ -5,6 +5,7 @@ public class SanitisedUser {
     public string? Id { get; set; }
     public string? Username { get; set; }
     public string? Email { get; set; }
+    public bool VerifiedEmail { get; set; }
 
     // 0=Disabled Account 1=Normal, 2=Admin
     public int? PermLevel { get; set; }
@@ -19,6 +20,7 @@ public class SanitisedUser {
         if (scopes.Contains("user_info") || hasFullAccess) {
             Username = user.Username;
             Email = user.Email;
+            VerifiedEmail = user.VerifiedEmail;
             PermLevel = user.PermLevel;
         }
 

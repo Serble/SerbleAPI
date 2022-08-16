@@ -15,4 +15,10 @@
         <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.22.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="Data\EmailSchemas\email_confirm.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>

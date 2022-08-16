@@ -12,7 +12,9 @@ public class AntiSpamProtection {
     public string SerbleAntiSpam { get; set; }
 
     public async Task<bool> Check(SerbleAuthorizationHeaderType authType = SerbleAuthorizationHeaderType.Null, User? user = null) {
-        if (user != null && authType == SerbleAuthorizationHeaderType.User && /* TODO: The users email is verified */ false) {
+        
+        // If the user is logged in with a verified email address, then they are automatically verified
+        if (user != null && authType == SerbleAuthorizationHeaderType.User && user.VerifiedEmail) {
             return true;
         }
         

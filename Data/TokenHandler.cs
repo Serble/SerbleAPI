@@ -174,6 +174,46 @@ public static class TokenHandler {
         }
     }
     
+    // Email Confirmation Tokens
+    // Claims:
+    // - userid
+    // - email
+    public static string GenerateEmailConfirmationToken(string userId, string email) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "email", email },
+            { "type", "email-confirmation" }
+        };
+        return GenerateToken(claims);
+    }
+    
+    public static bool ValidateEmailConfirmationToken(string token, out User user, out string email) {
+        user = null!;
+        email = "";
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                Logger.Debug(validationFailMsg);
+                return false;
+            }
+            claims.ThrowIfNull();
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("email")) {
+                return false;
+            }
+            if (claims["type"] != "email-confirmation") {
+                return false;
+            }
+            Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
+            gottenUser.ThrowIfNull();
+            user = gottenUser!;
+            email = claims["email"];
+            return true;
+        }
+        catch (Exception e) {
+            Logger.Debug("Token validation failed: " + e);
+            return false;
+        }
+    }
+
 
     private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 8760) {
         string mySecret = Program.Config!["token_secret"];

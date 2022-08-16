@@ -79,6 +79,7 @@ public class MySqlStorageService : IStorageService {
                                 id VARCHAR(64) primary key,
                                 username VARCHAR(255),
                                 email VARCHAR(64),
+                                verifiedEmail BOOLEAN,
                                 password VARCHAR(64),
                                 permlevel INT,
                                 permstring VARCHAR(64))");
@@ -127,10 +128,11 @@ public class MySqlStorageService : IStorageService {
         userDetails.Id = Guid.NewGuid().ToString();
         using MySqlCommand cmd = new MySqlCommand();
         cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_users(id, username, email, password, permlevel, permstring) VALUES(@id, @username, @email, @password, @permlevel, @permstring)";
+        cmd.CommandText = @"INSERT INTO serblesite_users(id, username, email, verifiedEmail, password, permlevel, permstring) VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring)";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
+        cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
         cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
@@ -153,6 +155,7 @@ public class MySqlStorageService : IStorageService {
             Id = reader.GetString("id"),
             Username = reader.GetString("username"),
             Email = reader.GetString("email"),
+            VerifiedEmail = reader.GetBoolean("verifiedEmail"),
             PasswordHash = reader.GetString("password"),
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring")

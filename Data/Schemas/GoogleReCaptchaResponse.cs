@@ -11,16 +11,16 @@ public class GoogleReCaptchaResponse {
     public double Score { get; set; }
     
     [JsonProperty("action")]
-    public string Action { get; set; }
-    
+    public string Action { get; set; } = null!;
+
     [JsonProperty("challenge_ts")]
-    public string ChallengeTs { get; set; }
-    
+    public string ChallengeTs { get; set; } = null!;
+
     [JsonProperty("hostname")]
-    public string Hostname { get; set; }
-    
+    public string Hostname { get; set; } = null!;
+
     [JsonProperty("error-codes")]
-    public string[] ErrorCodes { get; set; }
+    public string[] ErrorCodes { get; set; } = null!;
 
     public GoogleReCaptchaResponse(bool success) {
         Success = success;
@@ -38,4 +38,6 @@ public class GoogleReCaptchaResponse {
         Hostname = hostname;
         ErrorCodes = errorCodes;
     }
+
+    public GoogleReCaptchaResponse() { }
 }

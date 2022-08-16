@@ -30,6 +30,10 @@ public static class SerbleUtils {
         
     public static string Base64Decode(string base64EncodedData) => 
         Encoding.UTF8.GetString(Convert.FromBase64String(base64EncodedData));
+    
+    public static IEnumerable<T> ToSingleItemEnumerable<T>(this T item) {
+        yield return item;
+    }
 
 }
 

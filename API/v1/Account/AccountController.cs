@@ -39,7 +39,11 @@ public class AccountController : ControllerManager {
     }
 
     [HttpPost]
-    public ActionResult<SanitisedUser> Register([FromBody] RegisterRequestBody requestBody) {
+    public async Task<ActionResult<SanitisedUser>> Register([FromBody] RegisterRequestBody requestBody, [FromHeader] AntiSpamProtection antiSpam) {
+        if (!await antiSpam.Check()) {
+            return BadRequest("Anti-spam check failed");
+        }
+        
         Program.StorageService!.GetUserFromName(requestBody.Username, out User? existingUser);
         if (existingUser != null) {
             return Conflict("User already exists");
@@ -55,12 +59,13 @@ public class AccountController : ControllerManager {
     }
 
     [HttpPatch]
-    public ActionResult<SanitisedUser> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
+    public async Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
         if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
 
+        string originalEmail = target.Email;
         User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
             if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg)) {
@@ -68,6 +73,16 @@ public class AccountController : ControllerManager {
             }
             newUser = modUser;
         }
+        
+        // Check for email change so we can send a confirmation email
+        Logger.Debug("Email from " + originalEmail + " to " + newUser.Email);
+        if (newUser.Email != originalEmail && newUser.Email != "") {
+            // Make sure the new email is not verified
+            newUser.VerifiedEmail = false;
+            Logger.Debug("Sending email verification");
+            await EmailConfirmationService.SendConfirmationEmail(newUser);
+        }
+        
         Program.StorageService!.UpdateUser(newUser);
 
         return new SanitisedUser(target, scopes);

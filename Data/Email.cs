@@ -57,6 +57,7 @@ public class Email {
         }
         msg.Subject = Subject;
         msg.Body = Body;
+        msg.IsBodyHtml = true;
         return msg;
     }
     
