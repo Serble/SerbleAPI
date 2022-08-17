@@ -5,7 +5,7 @@ namespace SerbleAPI.Data;
 
 public static class EmailConfirmationService {
 
-    public static async Task SendConfirmationEmail(User user) {
+    public static void SendConfirmationEmail(User user) {
         if (user.VerifiedEmail) {
             throw new Exception("User has already verified their email");
         }
@@ -21,13 +21,8 @@ public static class EmailConfirmationService {
             Body = body
         };
 
-        try {
-            await confirmationEmail.SendAsync();
-            Logger.Debug("Sent confirmation email to " + user.Email);
-        }
-        catch (Exception e) {
-            Logger.Error("Failed to send confirmation email: " + e);
-        }
+        confirmationEmail.SendAsync().ContinueWith(_ => Logger.Debug("Sent confirmation email to " + user.Email));
+        Logger.Debug("Sending confirmation email to " + user.Email);
     }
     
 }
