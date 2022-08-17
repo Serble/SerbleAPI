@@ -35,7 +35,8 @@ public static class Program {
         { "google_recaptcha_site_key", "" },
         { "google_recaptcha_secret_key", "" },
         { "logging_level", "1" },
-        { "website_url", "https://serble.net" }
+        { "website_url", "https://serble.net" },
+        { "testing", "true" }
     };
     public static Dictionary<string, string>? Config;
     public static IStorageService? StorageService;
@@ -43,6 +44,7 @@ public static class Program {
     public static bool RestartApp = false;
     public static bool RestartAppOnce = false;
     public static Lockdown? Lockdown = null;
+    public static bool Testing = false;
     
     private static int Main(string[] args) {
 
@@ -110,6 +112,7 @@ public static class Program {
         Logger.Info("Loading config...");
         _configManager = new ConfigManager("config.json", ConfigDefaults);
         Config = _configManager.LoadConfig();
+        Testing = Config["testing"] == "true";
         Logger.Info("Config loaded.");
         
         // Storage service
