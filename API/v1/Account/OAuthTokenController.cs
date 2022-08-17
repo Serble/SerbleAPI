@@ -32,10 +32,10 @@ public class OAuthTokenController : ControllerManager {
         }
 
         return Ok(new AccessTokenResponse {
-            expires_in = 3600000,
-            access_token = TokenHandler.GenerateAccessToken(user!.Id, scope),
-            refresh_token = TokenHandler.GenerateRefreshToken(user.Id, client_id, scope),
-            token_type = "bearer"
+            ExpiresIn = 3600000,
+            AccessToken = TokenHandler.GenerateAccessToken(user!.Id, scope),
+            RefreshToken = TokenHandler.GenerateRefreshToken(user.Id, client_id, scope),
+            TokenType = "bearer"
         });
     }
     
@@ -63,10 +63,10 @@ public class OAuthTokenController : ControllerManager {
         }
 
         return Ok(new AccessTokenResponse {
-            expires_in = 3153600000,
-            access_token = TokenHandler.GenerateAccessToken(user.Id, scope),
-            refresh_token = refresh_token,
-            token_type = "bearer"
+            ExpiresIn = 3153600000,
+            AccessToken = TokenHandler.GenerateAccessToken(user.Id, scope),
+            RefreshToken = refresh_token,
+            TokenType = "bearer"
         });
     }
     

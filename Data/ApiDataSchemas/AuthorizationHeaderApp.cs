@@ -7,7 +7,7 @@ public class AuthorizationHeaderApp {
     
     [FromHeader]
     // Format: "SECRET USERID"
-    public string SerbleAuth { get; set; }
+    public string SerbleAuth { get; set; } = null!;
 
     public bool Check(string appId, out string[]? scopes, out User? user, out string? msg) {
         scopes = null;

@@ -8,7 +8,7 @@ namespace SerbleAPI.Data.ApiDataSchemas;
 public class BasicAuthorizationHeader {
         
     [FromHeader]
-    public string Authorization { get; set; }  // DO NOT SET TO PRIVATE IT BREAKS THE [FromHeader] ATTRIBUTE
+    public string Authorization { get; set; } = null!; // DO NOT SET TO PRIVATE IT BREAKS THE [FromHeader] ATTRIBUTE
 
     /// <summary>
     /// Get the specified username from the header

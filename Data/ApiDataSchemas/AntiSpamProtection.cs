@@ -8,8 +8,9 @@ public class AntiSpamProtection {
     [FromHeader]
     // Either:
     // ReCaptcha | recaptcha TOKEN
+    // Testing Bypass | bypass testing
     // Or be logged in with a verified email
-    public string SerbleAntiSpam { get; set; }
+    public string SerbleAntiSpam { get; set; } = null!;
 
     public async Task<bool> Check(SerbleAuthorizationHeaderType authType = SerbleAuthorizationHeaderType.Null, User? user = null) {
         
@@ -35,9 +36,11 @@ public class AntiSpamProtection {
                 }
                 return response.Score >= 0.5;
             
-            case "email":
-                // Not implemented
-                return false;
+            case "bypass":
+                return split[1] switch {
+                    "testing" => Program.Testing,
+                    _ => false
+                };
         }
     }
 }
