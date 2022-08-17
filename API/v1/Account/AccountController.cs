@@ -59,17 +59,17 @@ public class AccountController : ControllerManager {
     }
 
     [HttpPatch]
-    public async Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
+    public Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
         if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
-            return Unauthorized();
+            return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
         }
 
         string originalEmail = target.Email;
         User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
             if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg)) {
-                return BadRequest(applyErrorMsg);
+                return Task.FromResult<ActionResult<SanitisedUser>>(BadRequest(applyErrorMsg));
             }
             newUser = modUser;
         }
@@ -80,12 +80,12 @@ public class AccountController : ControllerManager {
             // Make sure the new email is not verified
             newUser.VerifiedEmail = false;
             Logger.Debug("Sending email verification");
-            await EmailConfirmationService.SendConfirmationEmail(newUser);
+            EmailConfirmationService.SendConfirmationEmail(newUser);
         }
         
         Program.StorageService!.UpdateUser(newUser);
 
-        return new SanitisedUser(target, scopes);
+        return Task.FromResult<ActionResult<SanitisedUser>>(new SanitisedUser(target, scopes));
     }
 
     [HttpOptions]

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Mail;
+using GeneralPurposeLib;
 using SerbleAPI.Data.Schemas;
 
 namespace SerbleAPI.Data;
@@ -33,8 +34,23 @@ public class Email {
         };
     }
 
-    public async Task SendAsync() => await GenerateClient().SendMailAsync(CollateMessage());
-    public void Send() => GenerateClient().Send(CollateMessage());
+    public async Task SendAsync() {
+        try {
+            await GenerateClient().SendMailAsync(CollateMessage());
+        }
+        catch (Exception e) {
+            Logger.Error("Email failed to send: " + e);
+        }
+    }
+
+    public void Send() {
+        try {
+            GenerateClient().Send(CollateMessage());
+        }
+        catch (Exception e) {
+            Logger.Error("Email failed to send: " + e);
+        }
+    }
 
     private static SmtpClient GenerateClient() {
         SmtpClient client = new (Program.Config!["smtp_host"]) {
