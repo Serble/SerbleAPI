@@ -16,7 +16,8 @@ public class AuthorizedAppsController : ControllerManager {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
-
+        
+        target.ObtainAuthorizedApps();
         return Ok(target.AuthorizedApps.ToJson());
     }
 

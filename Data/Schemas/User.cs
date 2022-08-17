@@ -49,7 +49,7 @@ public class User {
         return PasswordHash == Utils.ToSHA256(password);
     }
     
-    private void ObtainAuthorizedApps() {
+    public void ObtainAuthorizedApps() {
         Program.StorageService!.GetAuthorizedApps(Id, out _originalAuthedApps);
         _obtainedAuthedApps = _originalAuthedApps;
         Logger.Debug($"Obtained Authorized Apps for {Username}");
