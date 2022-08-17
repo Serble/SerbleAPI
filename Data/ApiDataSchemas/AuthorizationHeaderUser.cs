@@ -7,7 +7,7 @@ public class AuthorizationHeaderUser {
     
     [FromHeader]
     // Format: "APPID SECRET"
-    public string SerbleAuth { get; set; }
+    public string SerbleAuth { get; set; } = null!;
 
     public bool Check(out string? msg) {
         msg = null;

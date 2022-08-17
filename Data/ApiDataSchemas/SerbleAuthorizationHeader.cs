@@ -9,7 +9,7 @@ public class SerbleAuthorizationHeader {
     // Format: "TYPE DATA"
     // App: "App ACCESS_TOKEN"
     // User: "User TOKEN"
-    public string SerbleAuth { get; set; }
+    public string SerbleAuth { get; set; } = null!;
 
     /// <summary>
     /// Checks the header and authenticates the user.

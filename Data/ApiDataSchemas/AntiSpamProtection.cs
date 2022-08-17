@@ -9,7 +9,7 @@ public class AntiSpamProtection {
     // Either:
     // ReCaptcha | recaptcha TOKEN
     // Or be logged in with a verified email
-    public string SerbleAntiSpam { get; set; }
+    public string SerbleAntiSpam { get; set; } = null!;
 
     public async Task<bool> Check(SerbleAuthorizationHeaderType authType = SerbleAuthorizationHeaderType.Null, User? user = null) {
         
