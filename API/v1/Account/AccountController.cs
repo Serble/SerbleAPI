@@ -55,6 +55,7 @@ public class AccountController : ControllerManager {
             PermString = "0"
         };
         Program.StorageService.AddUser(newUser, out User user);
+        Logger.Debug("User " + user.Username + " created");
         return Ok(new SanitisedUser(user, "1", true)); // Ignore authed apps to stop error
     }
 

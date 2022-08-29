@@ -23,6 +23,7 @@ public static class GoogleReCaptchaHandler {
         
         string json = await response.Content.ReadAsStringAsync();
         GoogleReCaptchaResponse result = JsonConvert.DeserializeObject<GoogleReCaptchaResponse>(json)!;
+        Logger.Debug($"ReCaptcha Score: {result.Score}");
         return result;
     }
     
