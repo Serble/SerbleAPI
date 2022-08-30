@@ -35,6 +35,17 @@ public class AccountController : ControllerManager {
         
         // Delete the user's account
         Program.StorageService!.DeleteUser(target.Id);
+        
+        if (target.Email == "") return Ok();
+        
+        // Send an email
+        string body = EmailSchemasService.GetEmailSchema(EmailSchema.AccountDeleted);
+        body = body.Replace("{name}", target.Username);
+        Email email = new(
+            target.Email.ToSingleItemEnumerable().ToArray(), 
+            FromAddress.System, "Serble Account Deletion", 
+            body);
+        email.SendAsync();  // Don't await so the thread can continue
         return Ok();
     }
 
@@ -82,6 +93,16 @@ public class AccountController : ControllerManager {
             newUser.VerifiedEmail = false;
             Logger.Debug("Sending email verification");
             EmailConfirmationService.SendConfirmationEmail(newUser);
+            
+            // Send email to old email
+            string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged);
+            body = body.Replace("{name}", target.Username);
+            body = body.Replace("{newEmail}", newUser.Email);
+            Email email = new(
+                target.Email.ToSingleItemEnumerable().ToArray(), 
+                FromAddress.System, "Serble Email Changed", 
+                body);
+            email.SendAsync();  // Don't await so the thread can continue
         }
         
         Program.StorageService!.UpdateUser(newUser);
