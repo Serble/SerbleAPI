@@ -33,6 +33,10 @@ public class Email {
             _ => throw new InvalidEmailException("Invalid FromAddress")
         };
     }
+    
+    public void SendNonBlocking() {
+        Task.Run(Send);
+    }
 
     public async Task SendAsync() {
         try {

@@ -45,7 +45,7 @@ public class AccountController : ControllerManager {
             target.Email.ToSingleItemEnumerable().ToArray(), 
             FromAddress.System, "Serble Account Deletion", 
             body);
-        email.SendAsync();  // Don't await so the thread can continue
+        email.SendNonBlocking();  // Don't await so the thread can continue
         return Ok();
     }
 
@@ -102,7 +102,7 @@ public class AccountController : ControllerManager {
                 target.Email.ToSingleItemEnumerable().ToArray(), 
                 FromAddress.System, "Serble Email Changed", 
                 body);
-            email.SendAsync();  // Don't await so the thread can continue
+            email.SendNonBlocking();  // Don't await so the thread can continue
         }
         
         Program.StorageService!.UpdateUser(newUser);
