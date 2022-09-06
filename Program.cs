@@ -4,6 +4,8 @@ using SerbleAPI.Data;
 using SerbleAPI.Data.Raw;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Data.Storage;
+using Stripe;
+using File = System.IO.File;
 using LogLevel = GeneralPurposeLib.LogLevel;
 using UnauthorizedAccessException = System.UnauthorizedAccessException;
 
@@ -36,7 +38,9 @@ public static class Program {
         { "google_recaptcha_secret_key", "" },
         { "logging_level", "1" },
         { "website_url", "https://serble.net" },
-        { "testing", "true" }
+        { "testing", "true" },
+        { "stripe_key", "stripe_api_key" },
+        { "stripe_webhook_secret", "we_**************" }
     };
     public static Dictionary<string, string>? Config;
     public static IStorageService? StorageService;
@@ -113,6 +117,7 @@ public static class Program {
         _configManager = new ConfigManager("config.json", ConfigDefaults);
         Config = _configManager.LoadConfig();
         Testing = Config["testing"] == "true";
+        StripeConfiguration.ApiKey = Config["stripe_key"];
         Logger.Info("Config loaded.");
         
         // Storage service
