@@ -1,6 +1,8 @@
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
+using SerbleAPI.Data.ApiDataSchemas;
+using SerbleAPI.Data.Schemas;
 using Stripe;
 using Stripe.Checkout;
 
@@ -11,7 +13,11 @@ namespace SerbleAPI.API.v1.Payments;
 public class CreateCheckoutController : ControllerManager {
     
     [HttpPost("checkout")]
-    public ActionResult CreateCheckoutSession() {
+    public ActionResult CreateCheckoutSession([FromQuery] string user_id) {
+        // Try get user
+        Program.StorageService!.GetUser(user_id, out User? target);
+        if (target == null) return BadRequest("User not found");
+        
         string domain = Program.Config!["website_url"];
         
         Logger.Debug("Price key: " + Request.Form["lookup_key"]);
@@ -38,6 +44,7 @@ public class CreateCheckoutController : ControllerManager {
             Mode = "subscription",
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
+            Metadata = new Dictionary<string, string> {{"user_id", target.Id}}
         };
         SessionService service = new();
         Session session = service.Create(options);
@@ -96,7 +103,10 @@ public class CreateCheckoutController : ControllerManager {
                     }
                     case Events.CustomerSubscriptionCreated: {
                         Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                        Logger.Debug("Subscription created: " + subscription.Id);
+                        foreach (KeyValuePair<string, string> metapair in subscription.Metadata) {
+                            Logger.Debug("Metadata: " + metapair.Key + " " + metapair.Value);
+                        }
+                        Logger.Debug("Subscription created: " + subscription.Id + " Email: " + subscription.Customer.Email);
                         // TODO: handle the successful payment intent.
                         break;
                     }
