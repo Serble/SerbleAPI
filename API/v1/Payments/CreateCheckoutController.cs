@@ -1,3 +1,4 @@
+using System.ComponentModel.Design;
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
@@ -101,21 +102,37 @@ public class CreateCheckoutController : ControllerManager {
                         // TODO: handle the successful payment intent.
                         break;
                     }
-                    case Events.CustomerSubscriptionCreated: {
-                        if (stripeEvent.Data.Object is not Subscription subscription) {
-                            // ????????
+                    case Events.CheckoutSessionCompleted: {
+                        Session? session = stripeEvent.Data.Object as Session;
+                        Logger.Debug("Checkout session completed: " + session.Id);
+                        
+                        Subscription? subscription = session.Subscription;
+                        if (subscription == null) {
                             Logger.Debug("Null subscription");
                             break;
                         }
-
-                        if (subscription.Metadata == null) {
+                        if (session.Metadata == null) {
                             Logger.Debug("Null metadata");
                             break;
                         }
-                        foreach (KeyValuePair<string, string> metapair in subscription.Metadata) {
+                        
+                        Logger.Debug("Metadata: " + session.Metadata.Count);
+                        foreach (KeyValuePair<string, string> metapair in session.Metadata) {
                             Logger.Debug("Metadata: " + metapair.Key + " " + metapair.Value);
                         }
-                        Logger.Debug("Subscription created: " + subscription.Id + " Email: " + subscription.Customer.Email);
+
+                        if (session.Customer != null && session.Customer.Email != null) {
+                            Logger.Debug("Subscription created: " + session.Id + " Email: " + session.Customer.Email);
+                        }
+                        else {
+                            Logger.Debug("Something is null");
+                        }
+
+                        break;
+                    }
+                    case Events.CustomerSubscriptionCreated: {
+                        Subscription? subscription = stripeEvent.Data.Object as Subscription;
+                        Logger.Debug("Subscription created: " + subscription!.Id + " Email: " + subscription.Customer.Email);
                         // TODO: handle the successful payment intent.
                         break;
                     }
