@@ -29,9 +29,14 @@ public class MySqlStorageService : IStorageService {
 
     private async void RepairConnection() {
         Logger.Warn("Repairing MySQL Connection");
-        await _connection!.CloseAsync();
         try {
-            // await _connection!.OpenAsync();
+            await _connection!.CloseAsync();
+        }
+        catch (Exception e) {
+            Logger.Error("Error while closing MySQL Connection: " + e);
+            _connection = null;
+        }
+        try {
             Init();
         }
         catch (MySqlException e) {
