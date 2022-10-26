@@ -13,6 +13,7 @@ public class User {
     // 0=Disabled Account 1=Normal, 2=Admin
     public int PermLevel { get; set; }
     public string PermString { get; set; }
+    public int PremiumLevel { get; set; }
     
     // (appId, scopes)
     public AuthorizedApp[] AuthorizedApps {
@@ -40,6 +41,7 @@ public class User {
         Email = "";
         PasswordHash = "";
         PermLevel = 0;
+        PremiumLevel = 0;
         PermString = "";
         VerifiedEmail = false;
         _originalAuthedApps = Array.Empty<AuthorizedApp>();

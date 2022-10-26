@@ -9,6 +9,7 @@ public class SanitisedUser {
 
     // 0=Disabled Account 1=Normal, 2=Admin
     public int? PermLevel { get; set; }
+    public int PremiumLevel { get; set; }
     public string? PermString { get; set; }
     public AuthorizedApp[]? AuthorizedApps { get; set; }
 
@@ -22,6 +23,7 @@ public class SanitisedUser {
             Email = user.Email;
             VerifiedEmail = user.VerifiedEmail;
             PermLevel = user.PermLevel;
+            PremiumLevel = user.PremiumLevel;
         }
 
         if ((scopes.Contains("apps_control") || hasFullAccess) && !ignoreAuthedApps) {

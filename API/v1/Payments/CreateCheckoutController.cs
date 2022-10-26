@@ -111,13 +111,6 @@ public class CreateCheckoutController : ControllerManager {
                         }
                         Logger.Debug("Checkout session completed: " + session.Id + " for user " + user.Username);
 
-                        if (session.Customer != null && session.Customer.Email != null) {
-                            Logger.Debug("Subscription created: " + session.Id + " Email: " + session.Customer.Email);
-                        }
-                        else {
-                            Logger.Debug("Something is null");
-                        }
-                        
                         // Get what was purchased
                         SessionListLineItemsOptions options = new() {
                             Limit = 5
@@ -127,7 +120,23 @@ public class CreateCheckoutController : ControllerManager {
                         if (lineItems.Data.Count == 0) {
                             Logger.Warn("No line items found for session: " + session.Id);
                         }
-                        lineItems.Data.ForEach(item => Logger.Debug("Item: " + item.Description));
+                        lineItems.Data.ForEach(item => {
+                            Logger.Debug("Item Bought: " + item.Description);
+
+                            switch (item.Id) {
+                                
+                                case "prod_MNhiFWPKV4sna2":
+                                    Logger.Debug("Giving user " + user.Username + " 1 month of premium");
+                                    user.PremiumLevel = 10;
+                                    break;
+                                
+                                default:
+                                    Logger.Error("Unknown item bought: " + item.Id);
+                                    break;
+                                
+                            }
+                        });
+                        user.RegisterChanges();
 
                         break;
                     }

@@ -113,7 +113,7 @@ public class MySqlStorageService : IStorageService {
     }
 
     private void SendMySqlStatement(string statement) {
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = statement;
         cmd.ExecuteNonQuery();
@@ -140,9 +140,9 @@ public class MySqlStorageService : IStorageService {
     public void AddUser(User userDetails, out User newUser) {
         CheckConnection();
         userDetails.Id = Guid.NewGuid().ToString();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_users(id, username, email, verifiedEmail, password, permlevel, permstring) VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring)";
+        cmd.CommandText = @"INSERT INTO serblesite_users(id, username, email, verifiedEmail, password, permlevel, permstring, premiumLevel) VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @premiumLevel)";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
@@ -150,13 +150,14 @@ public class MySqlStorageService : IStorageService {
         cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
+        cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
         cmd.ExecuteNonQuery();
         newUser = userDetails;
     }
 
     public void GetUser(string userId, out User? user) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT * FROM serblesite_users WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", userId);
@@ -172,7 +173,8 @@ public class MySqlStorageService : IStorageService {
             VerifiedEmail = reader.GetBoolean("verifiedEmail"),
             PasswordHash = reader.GetString("password"),
             PermLevel = reader.GetInt32("permlevel"),
-            PermString = reader.GetString("permstring")
+            PermString = reader.GetString("permstring"),
+            PremiumLevel = reader.GetInt32("premiumLevel")
         };
 
         reader.Close();
@@ -180,21 +182,22 @@ public class MySqlStorageService : IStorageService {
 
     public void UpdateUser(User userDetails) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"UPDATE serblesite_users SET username=@username, email=@email, password=@password, permlevel=@permlevel, permstring=@permstring WHERE id=@id";
+        cmd.CommandText = @"UPDATE serblesite_users SET username=@username, email=@email, password=@password, permlevel=@permlevel, permstring=@permstring, premiumLevel=@premiumLevel WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
         cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
+        cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
         cmd.ExecuteNonQuery();
     }
 
     public void DeleteUser(string userId) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"DELETE FROM serblesite_users WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", userId);
@@ -207,7 +210,7 @@ public class MySqlStorageService : IStorageService {
 
     public void GetUserFromName(string userName, out User? user) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT * FROM serblesite_users WHERE username=@username";
         cmd.Parameters.AddWithValue("@username", userName);
@@ -222,7 +225,8 @@ public class MySqlStorageService : IStorageService {
             Email = reader.GetString("email"),
             PasswordHash = reader.GetString("password"),
             PermLevel = reader.GetInt32("permlevel"),
-            PermString = reader.GetString("permstring")
+            PermString = reader.GetString("permstring"),
+            PremiumLevel = reader.GetInt32("premiumLevel")
         };
 
         reader.Close();
@@ -230,7 +234,7 @@ public class MySqlStorageService : IStorageService {
 
     public void CountUsers(out long userCount) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT COUNT(*) FROM serblesite_users";
         userCount = (long) cmd.ExecuteScalar();
@@ -238,7 +242,7 @@ public class MySqlStorageService : IStorageService {
 
     public void AddAuthorizedApp(string userId, AuthorizedApp app) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"INSERT INTO serblesite_user_authorized_apps(userid, appid, scopes) VALUES(@userid, @appid, @scopes)";
         cmd.Parameters.AddWithValue("@userid", userId);
@@ -249,7 +253,7 @@ public class MySqlStorageService : IStorageService {
 
     public void GetAuthorizedApps(string userId, out AuthorizedApp[] apps) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT * FROM serblesite_user_authorized_apps WHERE userid=@id";
         cmd.Parameters.AddWithValue("@id", userId);
@@ -268,7 +272,7 @@ public class MySqlStorageService : IStorageService {
 
     public void DeleteAuthorizedApp(string userId, string appId) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"DELETE FROM serblesite_user_authorized_apps WHERE userid=@userid AND appid=@appid";
         cmd.Parameters.AddWithValue("@userid", userId);
@@ -278,7 +282,7 @@ public class MySqlStorageService : IStorageService {
 
     public void AddOAuthApp(OAuthApp app) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"INSERT INTO serblesite_apps(id, ownerid, name, description, clientsecret) VALUES(@id, @owner, @name, @description, @clientsecret)";
         cmd.Parameters.AddWithValue("@id", app.Id);
@@ -291,7 +295,7 @@ public class MySqlStorageService : IStorageService {
 
     public void GetOAuthApp(string appId, out OAuthApp? app) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT * FROM serblesite_apps WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", appId);
@@ -312,7 +316,7 @@ public class MySqlStorageService : IStorageService {
 
     public void UpdateOAuthApp(OAuthApp app) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"UPDATE serblesite_apps SET name=@name, description=@description, clientsecret=@clientsecret, ownerid=@ownerid WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", app.Id);
@@ -325,7 +329,7 @@ public class MySqlStorageService : IStorageService {
 
     public void DeleteOAuthApp(string appId) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"DELETE FROM serblesite_apps WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", appId);
@@ -334,7 +338,7 @@ public class MySqlStorageService : IStorageService {
 
     public void GetOAuthAppsFromUser(string userId, out OAuthApp[] apps) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT * FROM serblesite_apps WHERE ownerid=@ownerid";
         cmd.Parameters.AddWithValue("@ownerid", userId);
@@ -354,7 +358,7 @@ public class MySqlStorageService : IStorageService {
 
     public void BasicKvSet(string key, string value) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"INSERT INTO serblesite_kv(k, v) VALUES(@key, @value)";
         cmd.Parameters.AddWithValue("@key", key);
@@ -364,7 +368,7 @@ public class MySqlStorageService : IStorageService {
 
     public void BasicKvGet(string key, out string? value) {
         CheckConnection();
-        using MySqlCommand cmd = new MySqlCommand();
+        using MySqlCommand cmd = new();
         cmd.Connection = _connection;
         cmd.CommandText = @"SELECT v FROM serblesite_kv WHERE k=@key";
         cmd.Parameters.AddWithValue("@key", key);
