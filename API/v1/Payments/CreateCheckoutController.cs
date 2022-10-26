@@ -132,13 +132,13 @@ public class CreateCheckoutController : ControllerManager {
                     }
                     case Events.CustomerSubscriptionCreated: {
                         Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                        Logger.Debug("Subscription created: " + subscription!.Id + " Email: " + subscription.Customer.Email);
+                        Logger.Debug("Subscription created: " + subscription!.Id);
                         // TODO: handle the successful payment intent.
                         break;
                     }
                     case Events.CustomerSubscriptionTrialWillEnd: {
                         Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                        Logger.Debug("Subscription trial will end: " + subscription.Id);
+                        Logger.Debug("Subscription trial will end: " + subscription!.Id);
                         // TODO: handle the successful payment intent.
                         break;
                     }
