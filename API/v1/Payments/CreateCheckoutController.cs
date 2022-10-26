@@ -106,11 +106,9 @@ public class CreateCheckoutController : ControllerManager {
                         Session? session = stripeEvent.Data.Object as Session;
                         Logger.Debug("Checkout session completed: " + session.Id);
                         
-                        Subscription? subscription = session.Subscription;
-                        if (subscription == null) {
-                            Logger.Debug("Null subscription");
-                            break;
-                        }
+                        session.LineItems.Data.ForEach(item => {
+                            Logger.Debug("Item bought: " + item.Description);
+                        });
                         if (session.Metadata == null) {
                             Logger.Debug("Null metadata");
                             break;
