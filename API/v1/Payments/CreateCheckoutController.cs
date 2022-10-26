@@ -123,9 +123,9 @@ public class CreateCheckoutController : ControllerManager {
                         lineItems.Data.ForEach(item => {
                             Logger.Debug("Item Bought: " + item.Description);
 
-                            switch (item.Id) {
+                            switch (item.Price.Id) {
                                 
-                                case "li_1Lx3FbLys49IgQv1QoUXTMwP":
+                                case "price_1LewIkLys49IgQv1ge1sgLJ0":
                                     Logger.Debug("Giving user " + user.Username + " 1 month of premium");
                                     user.PremiumLevel = 10;
                                     break;
