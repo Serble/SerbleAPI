@@ -119,39 +119,15 @@ public class CreateCheckoutController : ControllerManager {
                         }
                         
                         // Get what was purchased
-                        if (session.LineItems == null) {
-                            Logger.Error("Session line items not found: " + session.Id);
-                            break;
+                        SessionListLineItemsOptions options = new() {
+                            Limit = 5
+                        };
+                        SessionService service = new();
+                        StripeList<LineItem> lineItems = await service.ListLineItemsAsync(session.Id, options);
+                        if (lineItems.Data.Count == 0) {
+                            Logger.Warn("No line items found for session: " + session.Id);
                         }
-                        if (session.LineItems.Data == null) {
-                            Logger.Error("Session line items data not found: " + session.Id);
-                            break;
-                        }
-                        if (session.LineItems.Data.Count == 0) {
-                            Logger.Error("Session line items data count is 0: " + session.Id);
-                            break;
-                        }
-                        if (session.LineItems.Data[0].Price == null) {
-                            Logger.Error("Session line items data price is null: " + session.Id);
-                            break;
-                        }
-                        if (session.LineItems.Data[0].Price.Product == null) {
-                            Logger.Error("Session line items data price product is null: " + session.Id);
-                            break;
-                        }
-                        if (session.LineItems.Data[0].Price.Product.Id == null) {
-                            Logger.Error("Session line items data price product id is null: " + session.Id);
-                            break;
-                        }
-                        
-                        // Get product
-                        ProductService productService = new();
-                        Product? product = await productService.GetAsync(session.LineItems.Data[0].Price.Product.Id);
-                        if (product == null) {
-                            Logger.Error("Product not found: " + session.LineItems.Data[0].Price.Product.Id);
-                            break;
-                        }
-                        Logger.Debug("Product: " + product.Id + " " + product.Name);
+                        lineItems.Data.ForEach(item => Logger.Debug("Item: " + item.Description));
 
                         break;
                     }
