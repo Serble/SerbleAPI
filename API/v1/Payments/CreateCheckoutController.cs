@@ -2,6 +2,7 @@ using System.ComponentModel.Design;
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
+using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 using Stripe;
@@ -120,8 +121,10 @@ public class CreateCheckoutController : ControllerManager {
                         if (lineItems.Data.Count == 0) {
                             Logger.Warn("No line items found for session: " + session.Id);
                         }
+                        List<string> purchasedItems = new();
                         lineItems.Data.ForEach(item => {
                             Logger.Debug("Item Bought: " + item.Description);
+                            purchasedItems.Add(item.Description);
 
                             switch (item.Price.Id) {
                                 
@@ -137,6 +140,14 @@ public class CreateCheckoutController : ControllerManager {
                             }
                         });
                         user.RegisterChanges();
+
+                        if (user.VerifiedEmail) {
+                            string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt);
+                            emailBody = emailBody.Replace("{name}", user.Username);
+                            emailBody = emailBody.Replace("{products}", string.Join(", ", purchasedItems));
+                            Email email = new(new []{user.Email}, FromAddress.System, "Purchase Receipt", emailBody);
+                            email.SendNonBlocking();
+                        }
 
                         break;
                     }
