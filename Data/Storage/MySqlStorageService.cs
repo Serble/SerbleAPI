@@ -9,6 +9,7 @@ public class MySqlStorageService : IStorageService {
 
     private MySqlConnection? _connection;  // MySQL Connection Object
     private string? _connectString;
+    private bool _isRepairing;
 
     private void CheckConnection() {
         if (_connection == null) {
@@ -28,7 +29,15 @@ public class MySqlStorageService : IStorageService {
     }
 
     private async void RepairConnection() {
+        if (_isRepairing) {
+            Logger.Warn("MySQL check failed while repairing connection, freezing thread until connection is repaired");
+            while (_isRepairing) {
+                // Wait for the connection to be repaired
+            }
+            return;
+        }
         Logger.Warn("Repairing MySQL Connection");
+        _isRepairing = true;
         try {
             await _connection!.CloseAsync();
         }
