@@ -125,7 +125,7 @@ public class CreateCheckoutController : ControllerManager {
 
                             switch (item.Id) {
                                 
-                                case "prod_MNhiFWPKV4sna2":
+                                case "li_1Lx3FbLys49IgQv1QoUXTMwP":
                                     Logger.Debug("Giving user " + user.Username + " 1 month of premium");
                                     user.PremiumLevel = 10;
                                     break;
