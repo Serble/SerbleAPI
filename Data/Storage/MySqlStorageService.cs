@@ -184,12 +184,13 @@ public class MySqlStorageService : IStorageService {
         CheckConnection();
         using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"UPDATE serblesite_users SET username=@username, email=@email, password=@password, permlevel=@permlevel, permstring=@permstring, premiumLevel=@premiumLevel WHERE id=@id";
+        cmd.CommandText = @"UPDATE serblesite_users SET username=@username, email=@email, password=@password, permlevel=@permlevel, verifiedEmail=@verifiedEmail, permstring=@permstring, premiumLevel=@premiumLevel WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
         cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
+        cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
         cmd.ExecuteNonQuery();
