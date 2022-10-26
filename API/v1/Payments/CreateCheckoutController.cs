@@ -102,7 +102,16 @@ public class CreateCheckoutController : ControllerManager {
                         break;
                     }
                     case Events.CustomerSubscriptionCreated: {
-                        Subscription? subscription = stripeEvent.Data.Object as Subscription;
+                        if (stripeEvent.Data.Object is not Subscription subscription) {
+                            // ????????
+                            Logger.Debug("Null subscription");
+                            break;
+                        }
+
+                        if (subscription.Metadata == null) {
+                            Logger.Debug("Null metadata");
+                            break;
+                        }
                         foreach (KeyValuePair<string, string> metapair in subscription.Metadata) {
                             Logger.Debug("Metadata: " + metapair.Key + " " + metapair.Value);
                         }
