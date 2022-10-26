@@ -110,10 +110,6 @@ public class CreateCheckoutController : ControllerManager {
                             break;
                         }
                         Logger.Debug("Checkout session completed: " + session.Id + " for user " + user.Username);
-                        
-                        session.LineItems.Data.ForEach(item => {
-                            Logger.Debug("Item bought: " + item.Id);
-                        });
 
                         if (session.Customer != null && session.Customer.Email != null) {
                             Logger.Debug("Subscription created: " + session.Id + " Email: " + session.Customer.Email);
@@ -121,6 +117,41 @@ public class CreateCheckoutController : ControllerManager {
                         else {
                             Logger.Debug("Something is null");
                         }
+                        
+                        // Get what was purchased
+                        if (session.LineItems == null) {
+                            Logger.Error("Session line items not found: " + session.Id);
+                            break;
+                        }
+                        if (session.LineItems.Data == null) {
+                            Logger.Error("Session line items data not found: " + session.Id);
+                            break;
+                        }
+                        if (session.LineItems.Data.Count == 0) {
+                            Logger.Error("Session line items data count is 0: " + session.Id);
+                            break;
+                        }
+                        if (session.LineItems.Data[0].Price == null) {
+                            Logger.Error("Session line items data price is null: " + session.Id);
+                            break;
+                        }
+                        if (session.LineItems.Data[0].Price.Product == null) {
+                            Logger.Error("Session line items data price product is null: " + session.Id);
+                            break;
+                        }
+                        if (session.LineItems.Data[0].Price.Product.Id == null) {
+                            Logger.Error("Session line items data price product id is null: " + session.Id);
+                            break;
+                        }
+                        
+                        // Get product
+                        ProductService productService = new();
+                        Product? product = await productService.GetAsync(session.LineItems.Data[0].Price.Product.Id);
+                        if (product == null) {
+                            Logger.Error("Product not found: " + session.LineItems.Data[0].Price.Product.Id);
+                            break;
+                        }
+                        Logger.Debug("Product: " + product.Id + " " + product.Name);
 
                         break;
                     }
