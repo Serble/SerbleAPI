@@ -45,7 +45,7 @@ public class CreateCheckoutController : ControllerManager {
             Mode = "subscription",
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
-            Metadata = new Dictionary<string, string> {{"user_id", target.Id}}
+            ClientReferenceId = user_id
         };
         SessionService service = new();
         Session session = service.Create(options);
@@ -104,20 +104,16 @@ public class CreateCheckoutController : ControllerManager {
                     }
                     case Events.CheckoutSessionCompleted: {
                         Session? session = stripeEvent.Data.Object as Session;
-                        Logger.Debug("Checkout session completed: " + session.Id);
-                        
-                        session.LineItems.Data.ForEach(item => {
-                            Logger.Debug("Item bought: " + item.Description);
-                        });
-                        if (session.Metadata == null) {
-                            Logger.Debug("Null metadata");
+                        Program.StorageService!.GetUser(session.ClientReferenceId, out User? user);
+                        if (user == null) {
+                            Logger.Error("User not found for session: " + session.Id);
                             break;
                         }
+                        Logger.Debug("Checkout session completed: " + session.Id + " for user " + user.Username);
                         
-                        Logger.Debug("Metadata: " + session.Metadata.Count);
-                        foreach (KeyValuePair<string, string> metapair in session.Metadata) {
-                            Logger.Debug("Metadata: " + metapair.Key + " " + metapair.Value);
-                        }
+                        session.LineItems.Data.ForEach(item => {
+                            Logger.Debug("Item bought: " + item.Id);
+                        });
 
                         if (session.Customer != null && session.Customer.Email != null) {
                             Logger.Debug("Subscription created: " + session.Id + " Email: " + session.Customer.Email);
