@@ -12,7 +12,7 @@ namespace SerbleAPI.API.v1.Payments;
 [ApiController]
 public class StripeWebhookController : ControllerManager {
     
-    [HttpPost("webhook")]
+    [HttpPost]
     public async Task<IActionResult> StripeWebhookCallback() {
         string json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
         // Replace this endpoint secret with your endpoint's unique secret
