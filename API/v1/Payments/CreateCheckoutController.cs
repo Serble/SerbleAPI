@@ -124,7 +124,7 @@ public class CreateCheckoutController : ControllerManager {
                         List<string> purchasedItems = new();
                         lineItems.Data.ForEach(item => {
                             Logger.Debug("Item Bought: " + item.Description);
-                            purchasedItems.Add(item.Description);
+                            purchasedItems.Add($"<li>{item.Description}</li>");
 
                             switch (item.Price.Id) {
                                 

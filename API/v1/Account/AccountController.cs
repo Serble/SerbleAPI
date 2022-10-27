@@ -97,7 +97,8 @@ public class AccountController : ControllerManager {
             // Send email to old email
             string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged);
             body = body.Replace("{name}", target.Username);
-            body = body.Replace("{newEmail}", newUser.Email);
+            body = body.Replace("{new_email}", newUser.Email);
+            body = body.Replace("{old_email}", originalEmail);
             Email email = new(
                 target.Email.ToSingleItemEnumerable().ToArray(), 
                 FromAddress.System, "Serble Email Changed", 
