@@ -43,7 +43,7 @@ public class StripeWebhookController : ControllerManager {
                     if (user.VerifiedEmail) {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.Subscription_Ended);
                         emailBody = emailBody.Replace("{name}", user.Username);
-                        Email email = new(new []{user.Email}, FromAddress.System, "Subscription Cancelled", emailBody);
+                        Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System, "Subscription Cancelled", emailBody);
                         email.SendNonBlocking();
                     }
                     break;

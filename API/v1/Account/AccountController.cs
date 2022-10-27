@@ -100,7 +100,7 @@ public class AccountController : ControllerManager {
             body = body.Replace("{new_email}", newUser.Email);
             body = body.Replace("{old_email}", originalEmail);
             Email email = new(
-                target.Email.ToSingleItemEnumerable().ToArray(), 
+                originalEmail.ToSingleItemEnumerable().ToArray(), 
                 FromAddress.System, "Serble Email Changed", 
                 body);
             email.SendNonBlocking();  // Don't await so the thread can continue
