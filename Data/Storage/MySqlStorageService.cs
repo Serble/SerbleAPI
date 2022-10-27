@@ -188,6 +188,7 @@ VALUES(
             user = null;
             return;
         }
+        string? subId = reader.IsDBNull("subscriptionId") ? null : reader.GetString("subscriptionId");
         user = new User {
             Id = reader.GetString("id"),
             Username = reader.GetString("username"),
@@ -197,7 +198,7 @@ VALUES(
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring"),
             PremiumLevel = reader.GetInt32("premiumLevel"),
-            SubscriptionId = reader.GetString("subscriptionId")
+            SubscriptionId = subId
         };
 
         reader.Close();
