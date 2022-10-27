@@ -95,6 +95,7 @@ public class StripeWebhookController : ControllerManager {
                                     break;
                                 }
                                 user.SubscriptionId = subscriptions.Data[0].Id;
+                                Logger.Debug("SETTING ID, Subscription ID: " + user.SubscriptionId);
                                 break;
                             
                             default:
