@@ -1,7 +1,5 @@
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Primitives;
-using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using Stripe;
 using Stripe.Checkout;

@@ -242,7 +242,6 @@ VALUES(
         cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
-        Logger.Debug("UPDATING USER SUB AI: " + userDetails.SubscriptionId);
         cmd.Parameters.AddWithValue("@subscriptionId", userDetails.SubscriptionId);
         cmd.ExecuteNonQuery();
     }
