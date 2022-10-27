@@ -29,6 +29,9 @@
       <None Update="Data\EmailSchemas\purchase_receipt.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
+      <None Update="Data\EmailSchemas\subscription_ended.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>

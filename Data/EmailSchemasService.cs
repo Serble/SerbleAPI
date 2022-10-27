@@ -10,6 +10,7 @@ public static class EmailSchemasService {
             EmailSchema.AccountDeleted => GetEmailSchemaFromFile("account_deleted.html"),
             EmailSchema.EmailChanged => GetEmailSchemaFromFile("email_changed.html"),
             EmailSchema.PurchaseReceipt => GetEmailSchemaFromFile("purchase_receipt.html"),
+            EmailSchema.Subscription_Ended => GetEmailSchemaFromFile("subscription_ended.html"),
             _ => throw new ArgumentException("Invalid schema")
         };
     }
@@ -30,5 +31,6 @@ public enum EmailSchema {
     ConfirmationEmail,
     AccountDeleted,
     EmailChanged,
-    PurchaseReceipt
+    PurchaseReceipt,
+    Subscription_Ended
 }

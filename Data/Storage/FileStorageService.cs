@@ -130,6 +130,10 @@ public class FileStorageService : IStorageService {
         userCount = (long) _users.Count;
     }
 
+    public void GetUserFromSubscription(string subscriptionId, out User? user) {
+        user = _users.FirstOrDefault(u => u.SubscriptionId == subscriptionId);
+    }
+
     public void AddAuthorizedApp(string userId, AuthorizedApp app) {
         _authorizations.Add((userId, app));
     }

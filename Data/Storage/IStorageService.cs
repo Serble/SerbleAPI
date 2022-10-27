@@ -12,6 +12,7 @@ public interface IStorageService {
     public void DeleteUser(string userId);
     public void GetUserFromName(string userName, out User? user);
     public void CountUsers(out long userCount);
+    public void GetUserFromSubscription(string subscriptionId, out User? user);
 
     public void AddAuthorizedApp(string userId, AuthorizedApp app);
     public void GetAuthorizedApps(string userId, out AuthorizedApp[] apps);

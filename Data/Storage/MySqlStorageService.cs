@@ -96,7 +96,9 @@ public class MySqlStorageService : IStorageService {
                                 verifiedEmail BOOLEAN,
                                 password VARCHAR(64),
                                 permlevel INT,
-                                permstring VARCHAR(64))");
+                                permstring VARCHAR(64),
+                                premiumLevel INT,
+                                subscriptionId VARCHAR(32))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_authorized_apps(
                                 userid VARCHAR(64),
                                 appid VARCHAR(64),
@@ -142,7 +144,26 @@ public class MySqlStorageService : IStorageService {
         userDetails.Id = Guid.NewGuid().ToString();
         using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_users(id, username, email, verifiedEmail, password, permlevel, permstring, premiumLevel) VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @premiumLevel)";
+        cmd.CommandText = @"INSERT INTO serblesite_users
+    (id, 
+     username, 
+     email, 
+     verifiedEmail, 
+     password, 
+     permlevel, 
+     permstring, 
+     premiumLevel, 
+     subscriptionId) 
+VALUES(
+       @id, 
+       @username, 
+       @email, 
+       @verifiedEmail, 
+       @password, 
+       @permlevel, 
+       @permstring, 
+       @premiumLevel, 
+       @subscriptionId)";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
@@ -151,6 +172,7 @@ public class MySqlStorageService : IStorageService {
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
+        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.SubscriptionId);
         cmd.ExecuteNonQuery();
         newUser = userDetails;
     }
@@ -174,17 +196,43 @@ public class MySqlStorageService : IStorageService {
             PasswordHash = reader.GetString("password"),
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring"),
-            PremiumLevel = reader.GetInt32("premiumLevel")
+            PremiumLevel = reader.GetInt32("premiumLevel"),
+            SubscriptionId = reader.GetString("subscriptionId")
         };
 
         reader.Close();
+    }
+
+    public void GetUserFromSubscription(string subId, out User? user) {
+        CheckConnection();
+        user = null;
+        using MySqlCommand cmd = new();
+        cmd.Connection = _connection;
+        cmd.CommandText = @"SELECT id FROM serblesite_users WHERE subscriptionId=@subId";
+        cmd.Parameters.AddWithValue("@subId", subId);
+        using MySqlDataReader reader = cmd.ExecuteReader();
+        if (!reader.Read()) {
+            return;
+        }
+        string userId = reader.GetString("id");
+        reader.Close();
+        GetUser(userId, out user);
     }
 
     public void UpdateUser(User userDetails) {
         CheckConnection();
         using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"UPDATE serblesite_users SET username=@username, email=@email, password=@password, permlevel=@permlevel, verifiedEmail=@verifiedEmail, permstring=@permstring, premiumLevel=@premiumLevel WHERE id=@id";
+        cmd.CommandText = @"UPDATE serblesite_users SET 
+                            username=@username, 
+                            email=@email, 
+                            password=@password, 
+                            permlevel=@permlevel, 
+                            verifiedEmail=@verifiedEmail, 
+                            permstring=@permstring, 
+                            premiumLevel=@premiumLevel,
+                            subscriptionId=@subscriptionId
+                        WHERE id=@id";
         cmd.Parameters.AddWithValue("@id", userDetails.Id);
         cmd.Parameters.AddWithValue("@username", userDetails.Username);
         cmd.Parameters.AddWithValue("@email", userDetails.Email);
@@ -193,6 +241,7 @@ public class MySqlStorageService : IStorageService {
         cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
+        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.SubscriptionId);
         cmd.ExecuteNonQuery();
     }
 
@@ -211,26 +260,18 @@ public class MySqlStorageService : IStorageService {
 
     public void GetUserFromName(string userName, out User? user) {
         CheckConnection();
+        user = null;
         using MySqlCommand cmd = new();
         cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT * FROM serblesite_users WHERE username=@username";
+        cmd.CommandText = @"SELECT id FROM serblesite_users WHERE username=@username";
         cmd.Parameters.AddWithValue("@username", userName);
         using MySqlDataReader reader = cmd.ExecuteReader();
         if (!reader.Read()) {
-            user = null;
             return;
         }
-        user = new User {
-            Id = reader.GetString("id"),
-            Username = reader.GetString("username"),
-            Email = reader.GetString("email"),
-            PasswordHash = reader.GetString("password"),
-            PermLevel = reader.GetInt32("permlevel"),
-            PermString = reader.GetString("permstring"),
-            PremiumLevel = reader.GetInt32("premiumLevel")
-        };
-
+        string userId = reader.GetString("id");
         reader.Close();
+        GetUser(userId, out user);
     }
 
     public void CountUsers(out long userCount) {

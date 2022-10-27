@@ -6,7 +6,7 @@ namespace SerbleAPI.API.v1.Payments;
 
 [Route("api/v1/payments/ordersuccess")]
 [ApiController]
-public class OrderSuccess : ControllerManager {
+public class OrderSuccessController : ControllerManager {
     
     [HttpGet("{session_id}")]
     public IActionResult Get(string session_id) {
