@@ -74,16 +74,27 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Warn("No line items found for session: " + session.Id);
                     }
                     List<string> purchasedItems = new();
-                    lineItems.Data.ForEach(item => {
+                    lineItems.Data.ForEach(async item => {
                         Logger.Debug("Item Bought: " + item.Description);
                         purchasedItems.Add($"<li>{item.Description}</li>");
 
                         switch (item.Price.Id) {
                             
                             case "price_1LewIkLys49IgQv1ge1sgLJ0":
-                                Logger.Debug("Giving user " + user.Username + " 1 month of premium");
+                                Logger.Debug("Giving user " + user.Username + " 1 month of premium (Product ID)");
                                 user.PremiumLevel = 10;
-                                user.SubscriptionId = item.ProductId;
+                                // Get the id of their new subscription
+                                SubscriptionService subscriptionService = new();
+                                SubscriptionListOptions subscriptionOptions = new() {
+                                    Limit = 1,
+                                    Customer = session.CustomerId
+                                };
+                                StripeList<Subscription> subscriptions = await subscriptionService.ListAsync(subscriptionOptions);
+                                if (subscriptions.Data.Count == 0) {
+                                    Logger.Error("No subscriptions found for customer: " + session.CustomerId);
+                                    break;
+                                }
+                                user.SubscriptionId = subscriptions.Data[0].Id;
                                 break;
                             
                             default:
