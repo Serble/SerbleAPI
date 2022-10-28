@@ -172,7 +172,7 @@ VALUES(
         cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
-        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.SubscriptionId);
+        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.StripeCustomerId);
         cmd.ExecuteNonQuery();
         newUser = userDetails;
     }
@@ -198,13 +198,13 @@ VALUES(
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring"),
             PremiumLevel = reader.GetInt32("premiumLevel"),
-            SubscriptionId = subId
+            StripeCustomerId = subId
         };
 
         reader.Close();
     }
 
-    public void GetUserFromSubscription(string subId, out User? user) {
+    public void GetUserFromStripeCustomerId(string subId, out User? user) {
         CheckConnection();
         user = null;
         using MySqlCommand cmd = new();
@@ -242,7 +242,7 @@ VALUES(
         cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
         cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
         cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
-        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.SubscriptionId);
+        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.StripeCustomerId);
         cmd.ExecuteNonQuery();
     }
 

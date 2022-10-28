@@ -14,7 +14,7 @@ public class User {
     public int PermLevel { get; set; }
     public string PermString { get; set; }
     public int PremiumLevel { get; set; }
-    public string? SubscriptionId { get; set; }
+    public string? StripeCustomerId { get; set; }
     
     // (appId, scopes)
     public AuthorizedApp[] AuthorizedApps {
@@ -46,7 +46,7 @@ public class User {
         PermString = "";
         VerifiedEmail = false;
         _originalAuthedApps = Array.Empty<AuthorizedApp>();
-        SubscriptionId = null;
+        StripeCustomerId = null;
     }
     
     public bool CheckPassword(string password) {

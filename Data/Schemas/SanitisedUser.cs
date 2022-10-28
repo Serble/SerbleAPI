@@ -11,6 +11,7 @@ public class SanitisedUser {
     public int? PermLevel { get; set; }
     public int PremiumLevel { get; set; }
     public string? PermString { get; set; }
+    public string? StripeCustomerId { get; set; }
     public AuthorizedApp[]? AuthorizedApps { get; set; }
 
     public SanitisedUser(User user, string scopeString, bool ignoreAuthedApps = false) {
@@ -28,6 +29,10 @@ public class SanitisedUser {
 
         if ((scopes.Contains("apps_control") || hasFullAccess) && !ignoreAuthedApps) {
             AuthorizedApps = user.AuthorizedApps;
+        }
+
+        if (hasFullAccess) {
+            StripeCustomerId = user.StripeCustomerId;
         }
     }
 

@@ -53,17 +53,14 @@ public class CreateCheckoutController : ControllerManager {
     
     [HttpPost("portal")]
     public ActionResult CreatePortalSession() {
-        // For demonstration purposes, we're using the Checkout session to retrieve the customer ID.
-        // Typically this is stored alongside the authenticated user in your database.
-        SessionService checkoutService = new();
-        Session? checkoutSession = checkoutService.Get(Request.Form["session_id"]);
+        string customerId = Request.Form["customer_id"];
 
         // This is the URL to which your customer will return after
         // they are done managing billing in the Customer Portal.
         string returnUrl = Program.Config!["website_url"];
 
         Stripe.BillingPortal.SessionCreateOptions options = new() {
-            Customer = checkoutSession.CustomerId,
+            Customer = customerId,
             ReturnUrl = returnUrl,
         };
         Stripe.BillingPortal.SessionService service = new();

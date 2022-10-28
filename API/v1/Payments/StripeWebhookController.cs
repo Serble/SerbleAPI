@@ -30,12 +30,12 @@ public class StripeWebhookController : ControllerManager {
                     if (stripeEvent.Data.Object is not Subscription subscription) break;
                     Logger.Debug("Subscription canceled: " + subscription.Id);
                     // Remove the user's subscription
-                    Program.StorageService!.GetUserFromSubscription(subscription.Id, out User? user);
+                    Program.StorageService!.GetUserFromStripeCustomerId(subscription.CustomerId, out User? user);
                     if (user == null) {
                         // User probably deleted their account
                         break;
                     }
-                    user.SubscriptionId = null;
+                    user.StripeCustomerId = null;
                     user.PremiumLevel = 0;
                     Program.StorageService.UpdateUser(user);
                     
@@ -94,8 +94,9 @@ public class StripeWebhookController : ControllerManager {
                                     Logger.Error("No subscriptions found for customer: " + session.CustomerId);
                                     break;
                                 }
-                                user.SubscriptionId = subscriptions.Data[0].Id;
-                                Logger.Debug("SETTING ID, Subscription ID: " + user.SubscriptionId);
+                                // user.SubscriptionId = subscriptions.Data[0].Id;
+                                user.StripeCustomerId = session.CustomerId;
+                                Logger.Debug("SETTING ID, Subscription ID: " + user.StripeCustomerId);
                                 break;
                             
                             default:
