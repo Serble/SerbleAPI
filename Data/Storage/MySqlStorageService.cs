@@ -31,17 +31,18 @@ public class MySqlStorageService : IStorageService {
             return;
         }
         if (_connection == null) {
+            Logger.Error("[MySQL Check Connection Results] Connection is null");
             RepairConnection();
             return;
         }
 
         try {
-            if (!_connection.Ping()) {
-                RepairConnection();
-            }
+            if (_connection.Ping()) return;
+            Logger.Error("[MySQL Check Connection Results] Ping failed");
+            RepairConnection();
         }
         catch (Exception e) {
-            Logger.Error("MySQL ping error: " + e.Message);
+            Logger.Error("[MySQL Check Connection Results] Ping error: " + e.Message);
             RepairConnection();
         }
 
@@ -54,7 +55,6 @@ public class MySqlStorageService : IStorageService {
                 // Wait for the connection to be repaired
             }
         }
-        Logger.Warn("Repairing MySQL Connection");
         try {
             IsRepairing = true;
             Logger.Warn("Repair Mode Enabled");
@@ -66,7 +66,8 @@ public class MySqlStorageService : IStorageService {
             }
             return;
         }
-        await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
+        Logger.Warn("Repairing MySQL Connection");
+        // await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
         try {
             await _connection!.CloseAsync();
         }
