@@ -12,6 +12,13 @@ public class MySqlStorageService : IStorageService {
     private bool _isRepairing;
 
     private void CheckConnection() {
+        if (_isRepairing) {
+            Logger.Warn("MySQL check occured while repairing connection, freezing thread until connection is repaired");
+            while (_isRepairing) {
+                // Wait for the connection to be repaired
+            }
+            return;
+        }
         if (_connection == null) {
             RepairConnection();
             return;
@@ -29,13 +36,6 @@ public class MySqlStorageService : IStorageService {
     }
 
     private async void RepairConnection() {
-        if (_isRepairing) {
-            Logger.Warn("MySQL check failed while repairing connection, freezing thread until connection is repaired");
-            while (_isRepairing) {
-                // Wait for the connection to be repaired
-            }
-            return;
-        }
         Logger.Warn("Repairing MySQL Connection");
         _isRepairing = true;
         try {
