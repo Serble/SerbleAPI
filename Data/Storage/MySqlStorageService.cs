@@ -54,6 +54,7 @@ public class MySqlStorageService : IStorageService {
             throw;
         }
         Logger.Info("MySQL Connection Repaired");
+        _isRepairing = false;
     }
 
     public void Init() {
