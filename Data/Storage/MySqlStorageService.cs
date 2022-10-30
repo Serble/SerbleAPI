@@ -123,6 +123,7 @@ public class MySqlStorageService : IStorageService {
     }
 
     private void DatabaseConnectStateChanged(object obj, StateChangeEventArgs args) {
+        return;  // Disabled to see if this is causing crashes
         if (args.CurrentState != ConnectionState.Broken &&
             args.CurrentState != ConnectionState.Closed) {
             return;
