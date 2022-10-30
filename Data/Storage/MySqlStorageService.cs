@@ -38,12 +38,14 @@ public class MySqlStorageService : IStorageService {
     private async void RepairConnection() {
         Logger.Warn("Repairing MySQL Connection");
         _isRepairing = true;
+        await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
         try {
             await _connection!.CloseAsync();
         }
         catch (Exception e) {
             Logger.Error("Error while closing MySQL Connection: " + e);
             _connection = null;
+            Logger.Debug("MySQL Connection set to null");
         }
         try {
             Init();
@@ -51,7 +53,7 @@ public class MySqlStorageService : IStorageService {
         catch (MySqlException e) {
             Logger.Error("MySQL Reconnection Error Occured");
             Logger.Error(e);
-            throw;
+            Program.RunApp = false;  // Stop the application
         }
         Logger.Info("MySQL Connection Repaired");
         _isRepairing = false;
