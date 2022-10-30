@@ -37,6 +37,12 @@ public class MySqlStorageService : IStorageService {
     }
 
     private async void RepairConnection() {
+        if (_isRepairing) {
+            Logger.Warn("Already repairing connection, skipping and waiting for repair to finish");
+            while (_isRepairing) {
+                // Wait for the connection to be repaired
+            }
+        }
         Logger.Warn("Repairing MySQL Connection");
         _isRepairing = true;
         await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
