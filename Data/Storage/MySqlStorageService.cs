@@ -40,7 +40,8 @@ public class MySqlStorageService : IStorageService {
                 RepairConnection();
             }
         }
-        catch (Exception) {
+        catch (Exception e) {
+            Logger.Error("MySQL ping error: " + e.Message);
             RepairConnection();
         }
 
