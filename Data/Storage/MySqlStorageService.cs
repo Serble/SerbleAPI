@@ -10,6 +10,7 @@ public class MySqlStorageService : IStorageService {
     private MySqlConnection? _connection;  // MySQL Connection Object
     private string? _connectString;
     private bool _isRepairing;
+    private bool _errorState;
 
     private void CheckConnection() {
         if (_isRepairing) {
@@ -54,6 +55,8 @@ public class MySqlStorageService : IStorageService {
             Logger.Error("MySQL Reconnection Error Occured");
             Logger.Error(e);
             Program.RunApp = false;  // Stop the application
+            _errorState = true;
+            return;
         }
         Logger.Info("MySQL Connection Repaired");
         _isRepairing = false;
@@ -83,6 +86,10 @@ public class MySqlStorageService : IStorageService {
     }
 
     public void Deinit() {
+        if (_errorState) {
+            Logger.Error("MySQL is in an error state, skipping deinit");
+            return;
+        }
         try {
             _connection!.Close();
         }

@@ -111,6 +111,13 @@ public static class Program {
     }
     
     private static int Run(string[] args) {
+        
+        // Intercepts Ctrl+C and Ctrl+Break
+        Console.CancelKeyPress += (sender, eventArgs) => {
+            Logger.Info("Received cancel signal, shutting down...");
+            RunApp = false;
+            eventArgs.Cancel = true;
+        };
 
         // Config
         Logger.Info("Loading config...");
