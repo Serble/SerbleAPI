@@ -9,13 +9,23 @@ public class MySqlStorageService : IStorageService {
 
     private MySqlConnection? _connection;  // MySQL Connection Object
     private string? _connectString;
-    private bool _isRepairing;
+    private bool IsRepairing {
+        set {
+            if (value && _isRepairingState) {
+                throw new Exception("Cannot repair the connection while it is already being repaired.");
+            }
+            _isRepairingState = value;
+        }
+        
+        get => _isRepairingState;
+    }
+    private bool _isRepairingState;
     private bool _errorState;
 
     private void CheckConnection() {
-        if (_isRepairing) {
+        if (IsRepairing) {
             Logger.Warn("MySQL check occured while repairing connection, freezing thread until connection is repaired");
-            while (_isRepairing) {
+            while (IsRepairing) {
                 // Wait for the connection to be repaired
             }
             return;
@@ -37,14 +47,23 @@ public class MySqlStorageService : IStorageService {
     }
 
     private async void RepairConnection() {
-        if (_isRepairing) {
+        if (IsRepairing) {
             Logger.Warn("Already repairing connection, skipping and waiting for repair to finish");
-            while (_isRepairing) {
+            while (IsRepairing) {
                 // Wait for the connection to be repaired
             }
         }
         Logger.Warn("Repairing MySQL Connection");
-        _isRepairing = true;
+        try {
+            IsRepairing = true;
+        }
+        catch (Exception) {
+            Logger.Warn("Connection is already being repaired");
+            while (IsRepairing) {
+                // Wait for the connection to be repaired
+            }
+            return;
+        }
         await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
         try {
             await _connection!.CloseAsync();
@@ -65,7 +84,7 @@ public class MySqlStorageService : IStorageService {
             return;
         }
         Logger.Info("MySQL Connection Repaired");
-        _isRepairing = false;
+        IsRepairing = false;
     }
 
     public void Init() {
