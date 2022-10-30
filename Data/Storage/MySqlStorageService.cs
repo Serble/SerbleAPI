@@ -56,6 +56,7 @@ public class MySqlStorageService : IStorageService {
         Logger.Warn("Repairing MySQL Connection");
         try {
             IsRepairing = true;
+            Logger.Warn("Repair Mode Enabled");
         }
         catch (Exception) {
             Logger.Warn("Connection is already being repaired");
