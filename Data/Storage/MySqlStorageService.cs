@@ -39,7 +39,7 @@ public class MySqlStorageService : IStorageService {
         try {
             if (_connection.Ping()) return;
             Logger.Error("[MySQL Check Connection Results] Ping failed");
-            // RepairConnection(); Ignore for now
+            RepairConnection();
         }
         catch (Exception e) {
             Logger.Error("[MySQL Check Connection Results] Ping error: " + e.Message);
