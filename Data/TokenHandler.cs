@@ -215,7 +215,7 @@ public static class TokenHandler {
     }
 
 
-    private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 8760) {
+    private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600) {
         string mySecret = Program.Config!["token_secret"];
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();

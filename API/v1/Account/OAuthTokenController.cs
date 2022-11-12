@@ -32,7 +32,7 @@ public class OAuthTokenController : ControllerManager {
         }
 
         return Ok(new AccessTokenResponse {
-            ExpiresIn = 3600000,
+            ExpiresIn = 87600,
             AccessToken = TokenHandler.GenerateAccessToken(user!.Id, scope),
             RefreshToken = TokenHandler.GenerateRefreshToken(user.Id, client_id, scope),
             TokenType = "bearer"
@@ -63,7 +63,7 @@ public class OAuthTokenController : ControllerManager {
         }
 
         return Ok(new AccessTokenResponse {
-            ExpiresIn = 3153600000,
+            ExpiresIn = 1,
             AccessToken = TokenHandler.GenerateAccessToken(user.Id, scope),
             RefreshToken = refresh_token,
             TokenType = "bearer"
