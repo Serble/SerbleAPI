@@ -6,141 +6,38 @@ using SerbleAPI.Data.Schemas;
 namespace SerbleAPI.Data.Storage;
 
 public class MySqlStorageService : IStorageService {
-
-    private MySqlConnection? _connection;  // MySQL Connection Object
     private string? _connectString;
-    private bool IsRepairing {
-        set {
-            if (value && _isRepairingState) {
-                throw new Exception("Cannot repair the connection while it is already being repaired.");
-            }
-            _isRepairingState = value;
-        }
-        
-        get => _isRepairingState;
-    }
-    private bool _isRepairingState;
-    private bool _errorState;
-
-    private void CheckConnection() {
-        if (IsRepairing) {
-            Logger.Warn("MySQL check occured while repairing connection, freezing thread until connection is repaired");
-            while (IsRepairing) {
-                // Wait for the connection to be repaired
-            }
-            return;
-        }
-        if (_connection == null) {
-            Logger.Error("[MySQL Check Connection Results] Connection is null");
-            RepairConnection();
-            return;
-        }
-
-        try {
-            if (_connection.Ping()) return;
-            Logger.Error("[MySQL Check Connection Results] Ping failed");
-            RepairConnection();
-        }
-        catch (Exception e) {
-            Logger.Error("[MySQL Check Connection Results] Ping error: " + e.Message);
-            RepairConnection();
-        }
-
-    }
-
-    private async void RepairConnection() {
-        if (IsRepairing) {
-            Logger.Warn("Already repairing connection, skipping and waiting for repair to finish");
-            while (IsRepairing) {
-                // Wait for the connection to be repaired
-            }
-        }
-        try {
-            IsRepairing = true;
-            Logger.Warn("Repair Mode Enabled");
-        }
-        catch (Exception) {
-            Logger.Warn("Connection is already being repaired");
-            while (IsRepairing) {
-                // Wait for the connection to be repaired
-            }
-            return;
-        }
-        Logger.Warn("Repairing MySQL Connection");
-        // await Task.Delay(1000); // Wait 1 second before attempting to reconnect to wait for any other threads to finish
-        try {
-            await _connection!.CloseAsync();
-        }
-        catch (Exception e) {
-            Logger.Error("Error while closing MySQL Connection: " + e);
-            _connection = null;
-            Logger.Debug("MySQL Connection set to null");
-        }
-        try {
-            Init();
-        }
-        catch (MySqlException e) {
-            Logger.Error("MySQL Reconnection Error Occured");
-            Logger.Error(e);
-            Program.RunApp = false;  // Stop the application
-            _errorState = true;
-            return;
-        }
-        Logger.Info("MySQL Connection Repaired");
-        IsRepairing = false;
-    }
 
     public void Init() {
-        Logger.Info("Connecting to MySQL...");
+        Logger.Info("Initialising MySQL...");
         _connectString = $"server={Program.Config!["mysql_ip"]};" +
                          $"userid={Program.Config["mysql_user"]};" +
                          $"password={Program.Config["mysql_password"]};" +
                          $"database={Program.Config["mysql_database"]}";
-
-        try {
-            _connection = new MySqlConnection(_connectString);
-            _connection.Open();
-        }
-        catch (Exception e) {
-            Logger.Debug(e.ToString());
-            throw new Exception("Failed to connect to MySQL");
-        }
-        Logger.Info("Connected MySQL");
-        _connection.StateChange += DatabaseConnectStateChanged;
-        Logger.Debug($"MySQL Version: {_connection.ServerVersion}");
-        Logger.Info("Creating tables in MySQL...");
+        Logger.Info("Creating tables...");
         CreateTables();
-        Logger.Info("Created MySQL tables");
+        Logger.Info("MySQL initialised.");
     }
 
     public void Deinit() {
-        if (_errorState) {
-            Logger.Error("MySQL is in an error state, skipping deinit");
-            return;
-        }
-        try {
-            _connection!.Close();
-        }
-        catch (Exception) {
-            Logger.Error("Failed to close MySQL connection");
-        }
+        Logger.Info("MySQL de-initialised");
     }
 
     private void CreateTables() {
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_users(
-                                id VARCHAR(64) primary key,
-                                username VARCHAR(255),
-                                email VARCHAR(64),
-                                verifiedEmail BOOLEAN,
-                                password VARCHAR(64),
-                                permlevel INT,
-                                permstring VARCHAR(64),
-                                premiumLevel INT,
-                                subscriptionId VARCHAR(32))");
+                           id VARCHAR(64) primary key,
+                           username VARCHAR(255),
+                           email VARCHAR(64),
+                           verifiedEmail BOOLEAN,
+                           password VARCHAR(64),
+                           permlevel INT,
+                           permstring VARCHAR(64),
+                           premiumLevel INT,
+                           subscriptionId VARCHAR(32))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_authorized_apps(
-                                userid VARCHAR(64),
-                                appid VARCHAR(64),
-                                scopes VARCHAR(128))");
+                           userid VARCHAR(64),
+                           appid VARCHAR(64),
+                           scopes VARCHAR(128))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_apps(" +
                            "ownerid VARCHAR(64), " +
                            "id VARCHAR(64), " +
@@ -153,76 +50,30 @@ public class MySqlStorageService : IStorageService {
     }
 
     private void SendMySqlStatement(string statement) {
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = statement;
-        cmd.ExecuteNonQuery();
-    }
-
-    private void DatabaseConnectStateChanged(object obj, StateChangeEventArgs args) {
-        return;  // Disabled to see if this is causing crashes
-        if (args.CurrentState != ConnectionState.Broken &&
-            args.CurrentState != ConnectionState.Closed) {
-            return;
-        }
-
-        // Reconnect
-        try {
-            _connection = new MySqlConnection(_connectString);
-            _connection.Open();
-        }
-        catch (Exception e) {
-            Logger.Error("MySQL reconnect failed: " + e);
-            _connection!.StateChange -= DatabaseConnectStateChanged;  // Don't loop connect
-            throw new Exception("Failed to reconnect to MySQL");
-        }
+        MySqlHelper.ExecuteNonQuery(_connectString!, statement);
     }
 
     public void AddUser(User userDetails, out User newUser) {
-        CheckConnection();
         userDetails.Id = Guid.NewGuid().ToString();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_users
-    (id, 
-     username, 
-     email, 
-     verifiedEmail, 
-     password, 
-     permlevel, 
-     permstring, 
-     premiumLevel, 
-     subscriptionId) 
-VALUES(
-       @id, 
-       @username, 
-       @email, 
-       @verifiedEmail, 
-       @password, 
-       @permlevel, 
-       @permstring, 
-       @premiumLevel, 
-       @subscriptionId)";
-        cmd.Parameters.AddWithValue("@id", userDetails.Id);
-        cmd.Parameters.AddWithValue("@username", userDetails.Username);
-        cmd.Parameters.AddWithValue("@email", userDetails.Email);
-        cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
-        cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
-        cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
-        cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
-        cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
-        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.StripeCustomerId);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString!, 
+            "INSERT INTO serblesite_users(" +
+            "id, username, email, verifiedEmail, password, permlevel, permstring, premiumLevel, subscriptionId) " +
+            "VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @premiumLevel, @subscriptionId)",
+            new MySqlParameter("@id", userDetails.Id),
+            new MySqlParameter("@username", userDetails.Username),
+            new MySqlParameter("@email", userDetails.Email),
+            new MySqlParameter("@verifiedEmail", userDetails.VerifiedEmail),
+            new MySqlParameter("@password", userDetails.PasswordHash),
+            new MySqlParameter("@permlevel", userDetails.PermLevel),
+            new MySqlParameter("@permstring", userDetails.PermString),
+            new MySqlParameter("@premiumLevel", userDetails.PremiumLevel),
+            new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId));
         newUser = userDetails;
     }
 
     public void GetUser(string userId, out User? user) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT * FROM serblesite_users WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", userId);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT * FROM serblesite_users WHERE id=@id",
+            new MySqlParameter("@id", userId));
         if (!reader.Read()) {
             user = null;
             return;
@@ -244,13 +95,9 @@ VALUES(
     }
 
     public void GetUserFromStripeCustomerId(string subId, out User? user) {
-        CheckConnection();
         user = null;
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT id FROM serblesite_users WHERE subscriptionId=@subId";
-        cmd.Parameters.AddWithValue("@subId", subId);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT * FROM serblesite_users WHERE subscriptionId=@subId",
+            new MySqlParameter("@subId", subId));
         if (!reader.Read()) {
             return;
         }
@@ -260,52 +107,38 @@ VALUES(
     }
 
     public void UpdateUser(User userDetails) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"UPDATE serblesite_users SET 
-                            username=@username, 
-                            email=@email, 
-                            password=@password, 
-                            permlevel=@permlevel, 
-                            verifiedEmail=@verifiedEmail, 
-                            permstring=@permstring, 
-                            premiumLevel=@premiumLevel,
-                            subscriptionId=@subscriptionId
-                        WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", userDetails.Id);
-        cmd.Parameters.AddWithValue("@username", userDetails.Username);
-        cmd.Parameters.AddWithValue("@email", userDetails.Email);
-        cmd.Parameters.AddWithValue("@password", userDetails.PasswordHash);
-        cmd.Parameters.AddWithValue("@permlevel", userDetails.PermLevel);
-        cmd.Parameters.AddWithValue("@verifiedEmail", userDetails.VerifiedEmail);
-        cmd.Parameters.AddWithValue("@permstring", userDetails.PermString);
-        cmd.Parameters.AddWithValue("@premiumLevel", userDetails.PremiumLevel);
-        cmd.Parameters.AddWithValue("@subscriptionId", userDetails.StripeCustomerId);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "UPDATE serblesite_users SET " +
+                                                    "username=@username, " +
+                                                    "email=@email, " +
+                                                    "verifiedEmail=@verifiedEmail, " +
+                                                    "password=@password, " +
+                                                    "permlevel=@permlevel, " +
+                                                    "permstring=@permstring, " +
+                                                    "premiumLevel=@premiumLevel, " +
+                                                    "subscriptionId=@subscriptionId " +
+                                                    "WHERE id=@id",
+            new MySqlParameter("@username", userDetails.Username),
+            new MySqlParameter("@email", userDetails.Email),
+            new MySqlParameter("@verifiedEmail", userDetails.VerifiedEmail),
+            new MySqlParameter("@password", userDetails.PasswordHash),
+            new MySqlParameter("@permlevel", userDetails.PermLevel),
+            new MySqlParameter("@permstring", userDetails.PermString),
+            new MySqlParameter("@premiumLevel", userDetails.PremiumLevel),
+            new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId),
+            new MySqlParameter("@id", userDetails.Id));
     }
 
     public void DeleteUser(string userId) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"DELETE FROM serblesite_users WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", userId);
-        cmd.ExecuteNonQuery();
-
-        // Delete all the authed app data
-        cmd.CommandText = @"DELETE FROM serblesite_user_authorized_apps WHERE userid=@id";
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "DELETE FROM serblesite_users WHERE id=@id",
+            new MySqlParameter("@id", userId));
+        MySqlHelper.ExecuteNonQuery(_connectString, "DELETE FROM serblesite_user_authorized_apps WHERE userid=@id",
+            new MySqlParameter("@id", userId));
     }
 
     public void GetUserFromName(string userName, out User? user) {
-        CheckConnection();
         user = null;
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT id FROM serblesite_users WHERE username=@username";
-        cmd.Parameters.AddWithValue("@username", userName);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT id FROM serblesite_users WHERE username=@username",
+            new MySqlParameter("@username", userName));
         if (!reader.Read()) {
             return;
         }
@@ -315,32 +148,20 @@ VALUES(
     }
 
     public void CountUsers(out long userCount) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT COUNT(*) FROM serblesite_users";
-        userCount = (long) cmd.ExecuteScalar();
+        userCount = (long) MySqlHelper.ExecuteScalar(_connectString, "SELECT COUNT(*) FROM serblesite_users");
     }
 
     public void AddAuthorizedApp(string userId, AuthorizedApp app) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_user_authorized_apps(userid, appid, scopes) VALUES(@userid, @appid, @scopes)";
-        cmd.Parameters.AddWithValue("@userid", userId);
-        cmd.Parameters.AddWithValue("@appid", app.AppId);
-        cmd.Parameters.AddWithValue("@scopes", app.Scopes);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "INSERT INTO serblesite_user_authorized_apps (userid, appid, scopes) " +
+                                                    "VALUES (@userid, @appid, @scopes)",
+            new MySqlParameter("@userid", userId),
+            new MySqlParameter("@appid", app.AppId),
+            new MySqlParameter("@scopes", app.Scopes));
     }
 
     public void GetAuthorizedApps(string userId, out AuthorizedApp[] apps) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT * FROM serblesite_user_authorized_apps WHERE userid=@id";
-        cmd.Parameters.AddWithValue("@id", userId);
-        using MySqlDataReader reader2 = cmd.ExecuteReader();
-
+        using MySqlDataReader reader2 = MySqlHelper.ExecuteReader(_connectString, "SELECT appid, scopes FROM serblesite_user_authorized_apps WHERE userid=@userid",
+            new MySqlParameter("@userid", userId));
         List<AuthorizedApp> authedApps = new ();
         while (reader2.Read()) {
             authedApps.Add(new AuthorizedApp(
@@ -348,40 +169,28 @@ VALUES(
                 reader2.GetString("scopes")));
         }
         reader2.Close();
-
         apps = authedApps.ToArray();
     }
 
     public void DeleteAuthorizedApp(string userId, string appId) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"DELETE FROM serblesite_user_authorized_apps WHERE userid=@userid AND appid=@appid";
-        cmd.Parameters.AddWithValue("@userid", userId);
-        cmd.Parameters.AddWithValue("@appid", appId);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "DELETE FROM serblesite_user_authorized_apps WHERE userid=@userid AND appid=@appid",
+            new MySqlParameter("@userid", userId),
+            new MySqlParameter("@appid", appId));
     }
 
     public void AddOAuthApp(OAuthApp app) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_apps(id, ownerid, name, description, clientsecret) VALUES(@id, @owner, @name, @description, @clientsecret)";
-        cmd.Parameters.AddWithValue("@id", app.Id);
-        cmd.Parameters.AddWithValue("@owner", app.OwnerId);
-        cmd.Parameters.AddWithValue("@name", app.Name);
-        cmd.Parameters.AddWithValue("@description", app.Description);
-        cmd.Parameters.AddWithValue("@clientsecret", app.ClientSecret);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "INSERT INTO serblesite_apps (id, ownerid, name, description, clientsecret) " +
+                                                    "VALUES (@id, @ownerid, @name, @description, @clientsecret)",
+            new MySqlParameter("@id", app.Id),
+            new MySqlParameter("@ownerid", app.OwnerId),
+            new MySqlParameter("@name", app.Name),
+            new MySqlParameter("@description", app.Description),
+            new MySqlParameter("@clientsecret", app.ClientSecret));
     }
 
     public void GetOAuthApp(string appId, out OAuthApp? app) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT * FROM serblesite_apps WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", appId);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT * FROM serblesite_apps WHERE id=@id",
+            new MySqlParameter("@id", appId));
         if (!reader.Read()) {
             app = null;
             return;
@@ -392,39 +201,26 @@ VALUES(
             Description = reader.GetString("description"),
             ClientSecret = reader.GetString("clientsecret")
         };
-
         reader.Close();
     }
 
     public void UpdateOAuthApp(OAuthApp app) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"UPDATE serblesite_apps SET name=@name, description=@description, clientsecret=@clientsecret, ownerid=@ownerid WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", app.Id);
-        cmd.Parameters.AddWithValue("@ownerid", app.OwnerId);
-        cmd.Parameters.AddWithValue("@name", app.Name);
-        cmd.Parameters.AddWithValue("@description", app.Description);
-        cmd.Parameters.AddWithValue("@clientsecret", app.ClientSecret);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "UPDATE serblesite_apps SET name=@name, description=@description, clientsecret=@clientsecret, ownerid=@ownerid WHERE id=@id",
+            new MySqlParameter("@name", app.Name),
+            new MySqlParameter("@ownerid", app.OwnerId),
+            new MySqlParameter("@description", app.Description),
+            new MySqlParameter("@clientsecret", app.ClientSecret),
+            new MySqlParameter("@id", app.Id));
     }
 
     public void DeleteOAuthApp(string appId) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"DELETE FROM serblesite_apps WHERE id=@id";
-        cmd.Parameters.AddWithValue("@id", appId);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "DELETE FROM serblesite_apps WHERE id=@id",
+            new MySqlParameter("@id", appId));
     }
 
     public void GetOAuthAppsFromUser(string userId, out OAuthApp[] apps) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT * FROM serblesite_apps WHERE ownerid=@ownerid";
-        cmd.Parameters.AddWithValue("@ownerid", userId);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT * FROM serblesite_apps WHERE ownerid=@id",
+            new MySqlParameter("@id", userId));
         List<OAuthApp> appsList = new ();
         while (reader.Read()) {
             appsList.Add(new OAuthApp(userId) {
@@ -439,22 +235,14 @@ VALUES(
     }
 
     public void BasicKvSet(string key, string value) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"INSERT INTO serblesite_kv(k, v) VALUES(@key, @value)";
-        cmd.Parameters.AddWithValue("@key", key);
-        cmd.Parameters.AddWithValue("@value", value);
-        cmd.ExecuteNonQuery();
+        MySqlHelper.ExecuteNonQuery(_connectString, "INSERT INTO serblesite_kv (k, v) VALUES (@key, @value) ON DUPLICATE KEY UPDATE v=@value",
+            new MySqlParameter("@key", key),
+            new MySqlParameter("@value", value));
     }
 
     public void BasicKvGet(string key, out string? value) {
-        CheckConnection();
-        using MySqlCommand cmd = new();
-        cmd.Connection = _connection;
-        cmd.CommandText = @"SELECT v FROM serblesite_kv WHERE k=@key";
-        cmd.Parameters.AddWithValue("@key", key);
-        using MySqlDataReader reader = cmd.ExecuteReader();
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT v FROM serblesite_kv WHERE k=@key",
+            new MySqlParameter("@key", key));
         if (!reader.Read()) {
             value = null;
             return;
@@ -462,4 +250,5 @@ VALUES(
         value = reader.GetString("v");
         reader.Close();
     }
+    
 }
