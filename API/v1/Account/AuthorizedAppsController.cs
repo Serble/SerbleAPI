@@ -66,6 +66,7 @@ public class AuthorizedAppsController : ControllerManager {
         }
 
         user.AuthorizedApps = user.AuthorizedApps.Where(sortedApp => sortedApp.AppId != appObj.Id).ToArray();
+        user.UpdateAuthorizedApps();
         return Ok();
     }
 

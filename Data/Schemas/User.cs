@@ -77,6 +77,10 @@ public class User {
         
         Program.StorageService!.UpdateUser(this);
 
+        UpdateAuthorizedApps();
+    }
+    
+    public void UpdateAuthorizedApps() {
         if (_originalAuthedApps == null || _obtainedAuthedApps == null) {
             Logger.Debug("No changes to authorized apps were made");
             return;
@@ -88,12 +92,12 @@ public class User {
         
         // Remove the removed apps
         foreach (AuthorizedApp app in removedApps) {
-            Program.StorageService.DeleteAuthorizedApp(Id, app.AppId);
+            Program.StorageService!.DeleteAuthorizedApp(Id, app.AppId);
         }
         
         // Add the new apps
         foreach (AuthorizedApp app in addedApps) {
-            Program.StorageService.AddAuthorizedApp(Id, app);
+            Program.StorageService!.AddAuthorizedApp(Id, app);
         }
 
         Logger.Debug("Added/Removed authed apps: " + addedApps.Length + "/" + removedApps.Length);
