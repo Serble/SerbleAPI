@@ -65,6 +65,10 @@ public class User {
     }
 
     public void AuthorizeApp(AuthorizedApp app) {
+        // If the app is already authorized delete it first
+        foreach (AuthorizedApp authedApp in AuthorizedApps.Where(oa => oa.AppId == app.AppId)) {
+            Program.StorageService!.DeleteAuthorizedApp(Id, authedApp.AppId);
+        }
         Program.StorageService!.AddAuthorizedApp(Id, app);
     }
 
