@@ -75,5 +75,11 @@ public class AuthorizedAppsController : ControllerManager {
         HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
         return Ok();
     }
+    
+    [HttpOptions("{appId}")]
+    public ActionResult OptionsApp() {
+        HttpContext.Response.Headers.Add("Allow", "DELETE, OPTIONS");
+        return Ok();
+    }
 
 }
