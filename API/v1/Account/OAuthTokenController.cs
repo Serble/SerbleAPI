@@ -1,3 +1,4 @@
+using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
@@ -17,6 +18,7 @@ public class OAuthTokenController : ControllerManager {
         [FromQuery] string client_id,
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
+        Logger.Debug("Validating oauth code: " + code);
         if (!TokenHandler.ValidateAuthorizationToken(code, client_id, out User? user, out string scope)) {
             return BadRequest("Invalid authorization code");
         }
