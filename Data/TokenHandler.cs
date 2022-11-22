@@ -229,8 +229,8 @@ public static class TokenHandler {
         SecurityToken token = tokenHandler.CreateToken(tokenDescriptor);
         return tokenHandler.WriteToken(token);
     }
-        
-    public static bool ValidateCurrentToken(string? token, out Dictionary<string, string>? claims, out string failMsg) {
+
+    private static bool ValidateCurrentToken(string? token, out Dictionary<string, string>? claims, out string failMsg) {
         claims = null;
         failMsg = "Error";
         string mySecret = Program.Config!["token_secret"];
@@ -246,8 +246,8 @@ public static class TokenHandler {
                 IssuerSigningKey = mySecurityKey
             }, out SecurityToken _);
         }
-        catch (Exception) {
-            failMsg = "Validator failed";
+        catch (Exception e) {
+            failMsg = "Validator failed: " + e.Message;
             return false;
         }
         JwtSecurityTokenHandler tokenHandler2 = new();
