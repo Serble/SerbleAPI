@@ -66,6 +66,7 @@ public static class TokenHandler {
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 Logger.Debug(validationFailMsg);
+                Logger.Debug("Validation failed on token: " + token);
                 return false;
             }
             claims.ThrowIfNull();
