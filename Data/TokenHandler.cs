@@ -81,6 +81,7 @@ public static class TokenHandler {
             }
             if (claims["appid"] != appId) {
                 reason = "Invalid app id";
+                Logger.Debug("App ID mismatch: " + claims["appid"] + " (Token) != " + appId + " (Expected)");
                 return false;
             }
             Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
