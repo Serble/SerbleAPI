@@ -60,29 +60,34 @@ public static class TokenHandler {
         return GenerateToken(claims);
     }
     
-    public static bool ValidateAuthorizationToken(string token, string appId, out User? user, out string scopeString) {
+    public static bool ValidateAuthorizationToken(string token, string appId, out User? user, out string scopeString, out string reason) {
         user = null;
         scopeString = "";
+        reason = "Unknown Error";
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 Logger.Debug(validationFailMsg);
-                Logger.Debug("Validation failed on token: " + token);
+                reason = "Token validation failed: " + validationFailMsg;
                 return false;
             }
             claims.ThrowIfNull();
             if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("appid") || !claims.ContainsKey("scope")) {
+                reason = "Missing claims";
                 return false;
             }
             if (claims["type"] != "oauth-authorization") {
+                reason = "Invalid token type";
                 return false;
             }
             if (claims["appid"] != appId) {
+                reason = "Invalid app id";
                 return false;
             }
             Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
             gottenUser.ThrowIfNull();
             user = gottenUser;
             scopeString = claims["scope"];
+            reason = "Success";
             return true;
         }
         catch (Exception e) {

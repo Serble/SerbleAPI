@@ -19,8 +19,8 @@ public class OAuthTokenController : ControllerManager {
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
         Logger.Debug("Validating oauth code: " + code);
-        if (!TokenHandler.ValidateAuthorizationToken(code, client_id, out User? user, out string scope)) {
-            return BadRequest("Invalid authorization code");
+        if (!TokenHandler.ValidateAuthorizationToken(code, client_id, out User? user, out string scope, out string reason)) {
+            return BadRequest("Invalid authorization code: " + reason);
         }
         Program.StorageService!.GetOAuthApp(client_id, out OAuthApp? app);
         if (app == null) {
