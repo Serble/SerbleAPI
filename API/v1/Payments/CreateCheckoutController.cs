@@ -47,6 +47,7 @@ public class CreateCheckoutController : ControllerManager {
         
         // Use existing user or known email
         if (!string.IsNullOrWhiteSpace(target.StripeCustomerId)) {
+            Logger.Debug("Using existing customer id: " + target.StripeCustomerId);
             options.Customer = target.StripeCustomerId;
         }
         else if (target.VerifiedEmail) {
