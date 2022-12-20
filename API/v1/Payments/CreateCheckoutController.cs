@@ -42,7 +42,9 @@ public class CreateCheckoutController : ControllerManager {
             Mode = "subscription",
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
-            ClientReferenceId = user_id
+            ClientReferenceId = user_id,
+            CustomerEmail = target.Email,
+            Customer = target.StripeCustomerId
         };
         SessionService service = new();
         Session session = service.Create(options);
