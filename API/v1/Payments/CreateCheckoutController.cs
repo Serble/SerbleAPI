@@ -51,9 +51,13 @@ public class CreateCheckoutController : ControllerManager {
             options.Customer = target.StripeCustomerId;
         }
         else if (target.VerifiedEmail) {
+            Logger.Debug($"Using existing email because no customer id (ID: {target.StripeCustomerId}) was found: " + target.Email);
             options.CustomerEmail = target.Email;
         }
-        
+        else {
+            Logger.Debug($"No customer id (ID: {target.StripeCustomerId}) or email found, creating new customer");
+        }
+
         SessionService service = new();
         Session session = service.Create(options);
 
