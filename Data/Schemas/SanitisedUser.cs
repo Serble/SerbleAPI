@@ -15,6 +15,7 @@ public class SanitisedUser {
     public AuthorizedApp[]? AuthorizedApps { get; set; }
 
     public SanitisedUser(User user, string scopeString, bool ignoreAuthedApps = false) {
+        //ScopeHandler.ScopesEnum scopes = ScopeHandler.ScopeStringToEnums(scopeString);
         string[] scopes = ScopeHandler.StringToListOfScopeIds(scopeString);
         bool hasFullAccess = scopes.Contains("full_access");
         Id = user.Id;
@@ -31,7 +32,7 @@ public class SanitisedUser {
             AuthorizedApps = user.AuthorizedApps;
         }
 
-        if (hasFullAccess) {
+        if (scopes.Contains("payment_info") || hasFullAccess) {
             StripeCustomerId = user.StripeCustomerId;
         }
     }

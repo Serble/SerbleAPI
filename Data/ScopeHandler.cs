@@ -12,21 +12,24 @@ public static class ScopeHandler {
         "full_access",
         "file_host",
         "user_info",
-        "apps_control"
+        "apps_control",
+        "payment_info"
     };
     
     public static readonly string[] ScopeNames = {
         "Full Account Access",
         "File Host",
         "Account Information",
-        "Control Of Authorized Applications"
+        "Control Of Authorized Applications",
+        "Payment Information"
     };
     
     public enum ScopesEnum {
         FullAccess,
         FileHost,
         UserInfo,
-        AppsControl
+        AppsControl,
+        PaymentInfo
     }
 
     // id, name
@@ -36,7 +39,8 @@ public static class ScopeHandler {
         "Allows full access to the account.",
         "Allows access the file host.",
         "Allows access to the account's information (Eg. Username, Email).",
-        "Allows control over authorized applications."
+        "Allows control over authorized applications.",
+        "Allows access to a user's list of purchased products and allows them to manage their subscriptions."
     };
 
     public static string ListOfScopeIdsToString(IEnumerable<string> scopeIds) {
@@ -67,6 +71,10 @@ public static class ScopeHandler {
     
     public static IEnumerable<string> ScopesEnumToIdsArray(IEnumerable<ScopesEnum> scopes) {
         return scopes.Select(t => t.ToString());
+    }
+    
+    public static IEnumerable<ScopesEnum> ScopeStringToEnums(string scopeString) {
+        return ScopesIdsToEnumArray(StringToListOfScopeIds(scopeString));
     }
     
 }
