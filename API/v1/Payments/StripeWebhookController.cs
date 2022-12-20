@@ -26,6 +26,7 @@ public class StripeWebhookController : ControllerManager {
             stripeEvent = EventUtility.ConstructEvent(json,
                     signatureHeader, endpointSecret);
             switch (stripeEvent.Type) {
+                
                 case Events.CustomerSubscriptionDeleted: {
                     if (stripeEvent.Data.Object is not Subscription subscription) break;
                     Logger.Debug("Subscription canceled: " + subscription.Id);
@@ -33,9 +34,9 @@ public class StripeWebhookController : ControllerManager {
                     Program.StorageService!.GetUserFromStripeCustomerId(subscription.CustomerId, out User? user);
                     if (user == null) {
                         // User probably deleted their account
+                        Logger.Debug("User not found for subscription: " + subscription.Id);
                         break;
                     }
-                    user.StripeCustomerId = null;
                     user.PremiumLevel = 0;
                     Program.StorageService.UpdateUser(user);
                     
@@ -48,11 +49,13 @@ public class StripeWebhookController : ControllerManager {
                     }
                     break;
                 }
+                
                 case Events.CustomerSubscriptionUpdated: {
                     Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                    Logger.Debug("Subscription updated: " + subscription.Id);
+                    Logger.Debug("Subscription updated: " + subscription!.Id);
                     break;
                 }
+                
                 case Events.CheckoutSessionCompleted: {
                     if (stripeEvent.Data.Object is not Session session) {
                         break;  // Error maybe?
@@ -78,9 +81,10 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Debug("Item Bought: " + item.Description);
                         purchasedItems.Add($"<li>{item.Description}</li>");
 
-                        switch (item.Price.Id) {
+                        SerbleProduct product = ProductManager.GetProductFromPriceId(item.Price.Id);
+                        switch (product) {
                             
-                            case "price_1LewIkLys49IgQv1ge1sgLJ0":
+                            case SerbleProduct.Premium:
                                 Logger.Debug("Giving user " + user.Username + " 1 month of premium (Product ID)");
                                 user.PremiumLevel = 10;
                                 // Get the id of their new subscription
@@ -94,11 +98,11 @@ public class StripeWebhookController : ControllerManager {
                                     Logger.Error("No subscriptions found for customer: " + session.CustomerId);
                                     break;
                                 }
-                                // user.SubscriptionId = subscriptions.Data[0].Id;
                                 user.StripeCustomerId = session.CustomerId;
                                 Logger.Debug("SETTING ID, Subscription ID: " + user.StripeCustomerId);
                                 break;
                             
+                            case SerbleProduct.Unknown:
                             default:
                                 Logger.Error("Unknown item bought: " + item.Id);
                                 break;
@@ -117,17 +121,19 @@ public class StripeWebhookController : ControllerManager {
 
                     break;
                 }
+                
                 case Events.CustomerSubscriptionCreated: {
                     Subscription? subscription = stripeEvent.Data.Object as Subscription;
                     Logger.Debug("Subscription created: " + subscription!.Id);
                     break;
                 }
+                
                 case Events.CustomerSubscriptionTrialWillEnd: {
                     Subscription? subscription = stripeEvent.Data.Object as Subscription;
                     Logger.Debug("Subscription trial will end: " + subscription!.Id);
-                    // TODO: handle the successful payment intent.
                     break;
                 }
+                
                 default:
                     Logger.Error("Unhandled event type: " + stripeEvent.Type);
                     break;
