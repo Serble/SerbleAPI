@@ -1,9 +1,7 @@
-using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
-using Stripe;
 
 namespace SerbleAPI.API.v1.Account; 
 
@@ -18,7 +16,8 @@ public class AccountProductsController : ControllerManager {
         }
 
         ScopeHandler.ScopesEnum[] scopesEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
-        if (authType == SerbleAuthorizationHeaderType.App && !scopesEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo)) {
+        if (authType == SerbleAuthorizationHeaderType.App &&
+            !scopesEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopesEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
             return Forbid("Insufficient scope");
         }
         return Ok(ProductManager.ListOfProductsFromUser(target));

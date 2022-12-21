@@ -1,5 +1,7 @@
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Data;
+using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 using Stripe;
 using Stripe.Checkout;
@@ -66,6 +68,7 @@ public class CreateCheckoutController : ControllerManager {
     }
     
     [HttpPost("portal")]
+    [Obsolete("Customer ID is no longer provided to clients.")]
     public ActionResult CreatePortalSession() {
         string customerId = Request.Form["customer_id"];
 
@@ -78,10 +81,51 @@ public class CreateCheckoutController : ControllerManager {
             ReturnUrl = returnUrl,
         };
         Stripe.BillingPortal.SessionService service = new();
-        Stripe.BillingPortal.Session? session = service.Create(options);
+        Stripe.BillingPortal.Session? session;
+        try {
+            session = service.Create(options);
+        }
+        catch (StripeException) {
+            return BadRequest("Invalid Customer");
+        }
 
         Response.Headers.Add("Location", session.Url);
         return new StatusCodeResult(303);
+    }
+
+    /// <summary>
+    /// Get the URL for the customer portal.
+    /// </summary>
+    /// <remarks>
+    /// Requires the payment_info scope.
+    /// </remarks>
+    /// <returns>A URL that will send the user to their Stripe portal.</returns>
+    [HttpGet("portal")]
+    public ActionResult<dynamic> SendUserToPortal([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
+        if (!authorizationHeader.Check(out string scopes, out SerbleAuthorizationHeaderType? type, out string _, out User target)) {
+            return Unauthorized();
+        }
+
+        ScopeHandler.ScopesEnum[] scopeStringToEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
+        if (!scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
+            return Forbid("Insufficient scope");
+        }
+        
+        string? stripeCustomerId = target.StripeCustomerId;
+        if (string.IsNullOrWhiteSpace(stripeCustomerId)) {
+            return BadRequest("User is not a customer.");
+        }
+        
+        string returnUrl = Program.Config!["website_url"];
+
+        Stripe.BillingPortal.SessionCreateOptions options = new() {
+            Customer = stripeCustomerId,
+            ReturnUrl = returnUrl,
+        };
+        Stripe.BillingPortal.SessionService service = new();
+        Stripe.BillingPortal.Session? session = service.Create(options);
+
+        return new { url = session.Url };
     }
 
     [HttpOptions("checkout")]
@@ -92,7 +136,7 @@ public class CreateCheckoutController : ControllerManager {
     
     [HttpOptions("portal")]
     public IActionResult OptionsPortal() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
+        HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
         return Ok();
     }
     

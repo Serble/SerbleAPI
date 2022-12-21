@@ -40,7 +40,8 @@ public static class ScopeHandler {
         "Allows access the file host.",
         "Allows access to the account's information (Eg. Username, Email).",
         "Allows control over authorized applications.",
-        "Allows access to a user's list of purchased products and allows them to manage their subscriptions."
+        "Allows access to a user's list of purchased products and allows them to manage their subscriptions, " +
+        "including viewing the last 4 digits of their credit card and viewing purchase history."
     };
 
     public static string ListOfScopeIdsToString(IEnumerable<string> scopeIds) {

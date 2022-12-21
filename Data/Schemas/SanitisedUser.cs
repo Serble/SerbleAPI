@@ -11,8 +11,10 @@ public class SanitisedUser {
     public int? PermLevel { get; set; }
     public int PremiumLevel { get; set; }
     public string? PermString { get; set; }
-    public string? StripeCustomerId { get; set; }
     public AuthorizedApp[]? AuthorizedApps { get; set; }
+    
+    [Obsolete("Stripe Customer ID is no longer provided to clients for security reasons.")]
+    public string? StripeCustomerId { get; set; }
 
     public SanitisedUser(User user, string scopeString, bool ignoreAuthedApps = false) {
         //ScopeHandler.ScopesEnum scopes = ScopeHandler.ScopeStringToEnums(scopeString);
@@ -33,7 +35,7 @@ public class SanitisedUser {
         }
 
         if (scopes.Contains("payment_info") || hasFullAccess) {
-            StripeCustomerId = user.StripeCustomerId;
+            // StripeCustomerId = user.StripeCustomerId;
         }
     }
 
