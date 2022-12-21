@@ -67,7 +67,7 @@ public static class ScopeHandler {
     }
 
     public static IEnumerable<ScopesEnum> ScopesIdsToEnumArray(IEnumerable<string> scopes) {
-        return scopes.Select(t => (ScopesEnum)Enum.Parse(typeof(ScopesEnum), t));
+        return scopes.Select(scope => (ScopesEnum) Array.IndexOf(Scopes, scope));
     }
     
     public static IEnumerable<string> ScopesEnumToIdsArray(IEnumerable<ScopesEnum> scopes) {
