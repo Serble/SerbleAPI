@@ -19,12 +19,13 @@ public class StripeWebhookController : ControllerManager {
         // If you are testing with the CLI, find the secret by running 'stripe listen'
         // If you are using an endpoint defined with the API or dashboard, look in your webhook settings
         // at https://dashboard.stripe.com/webhooks
-        string endpointSecret = Program.Config!["stripe_webhook_secret"];
+        string endpointSecret = Program.Testing ? Program.Config!["stripe_testing_webhook_secret"] : Program.Config!["stripe_webhook_secret"];
         try {
             Event? stripeEvent = EventUtility.ParseEvent(json);
             StringValues signatureHeader = Request.Headers["Stripe-Signature"];
             stripeEvent = EventUtility.ConstructEvent(json,
                     signatureHeader, endpointSecret);
+            bool liveMode = stripeEvent.Livemode;
             switch (stripeEvent.Type) {
                 
                 case Events.CustomerSubscriptionDeleted: {
@@ -38,8 +39,9 @@ public class StripeWebhookController : ControllerManager {
                         break;
                     }
                     user.PremiumLevel = 0;
+
                     Program.StorageService.UpdateUser(user);
-                    
+
                     // Send email
                     if (user.VerifiedEmail) {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.Subscription_Ended);
@@ -65,7 +67,7 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Error("User not found for session: " + session.Id);
                         break;
                     }
-                    Logger.Debug("Checkout session completed: " + session.Id + " for user " + user.Username);
+                    Logger.Debug($"Checkout session completed: " + session.Id + " for user " + user.Username);
 
                     // Get what was purchased
                     SessionListLineItemsOptions options = new() {

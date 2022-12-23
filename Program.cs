@@ -40,7 +40,9 @@ public static class Program {
         { "website_url", "https://serble.net" },
         { "testing", "true" },
         { "stripe_key", "stripe_api_key" },
+        { "stripe_test_key", "stripe_api_key" },
         { "stripe_webhook_secret", "we_**************" },
+        { "stripe_testing_webhook_secret", "we_**************" },
         { "stripe_premium_sub_id", "SerblePremiumPriceID" }
     };
     public static Dictionary<string, string>? Config;
