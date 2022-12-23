@@ -112,7 +112,7 @@ public class StripeWebhookController : ControllerManager {
                             
                             case SerbleProduct.Unknown:
                             default:
-                                Logger.Error("Unknown item bought: " + item.Id);
+                                Logger.Error("Unknown item bought: " + item.Price.Id);
                                 break;
                             
                         }
