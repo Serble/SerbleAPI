@@ -44,6 +44,9 @@ public class StripeWebhookController : ControllerManager {
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
                         Program.StorageService.UpdateUser(user);
                     }
+                    else {
+                        Logger.Debug("Not removing subscription for user " + user.Username + " because they are not an admin and we are not in live mode");
+                    }
 
                     // Send email
                     if (user.VerifiedEmail) {
@@ -116,6 +119,9 @@ public class StripeWebhookController : ControllerManager {
                     });
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
                         user.RegisterChanges();
+                    }
+                    else {
+                        Logger.Debug("Not fulfilling order because we are not in live mode and user is not admin");
                     }
 
                     if (user.VerifiedEmail) {
