@@ -44,6 +44,7 @@ public static class Program {
         { "stripe_webhook_secret", "we_**************" },
         { "stripe_testing_webhook_secret", "we_**************" },
         { "stripe_premium_sub_id", "SerblePremiumPriceID" },
+        { "stripe_testing_premium_sub_id", "SerblePremiumPriceID" },
         { "give_products_to_non_admins_while_testing", "false" }
     };
     public static Dictionary<string, string>? Config;
