@@ -9,14 +9,17 @@ public class User {
     public string Email { get; set; }
     public bool VerifiedEmail { get; set; }
     public string PasswordHash { get; set; }
-    
-    // 0=Disabled Account 1=Normal, 2=Admin
+    /// <summary>
+    /// 0=Disabled Account 1=Normal, 2=Admin
+    /// </summary>
     public int PermLevel { get; set; }
     public string PermString { get; set; }
+    /// <summary>
+    /// 0=None 10=Premium
+    /// </summary>
     public int PremiumLevel { get; set; }
     public string? StripeCustomerId { get; set; }
     
-    // (appId, scopes)
     public AuthorizedApp[] AuthorizedApps {
         get {
             Logger.Debug("Get was made on AuthorizedApps");
@@ -103,4 +106,7 @@ public class User {
         Logger.Debug("Added/Removed authed apps: " + addedApps.Length + "/" + removedApps.Length);
     }
 
-}
+    public bool IsAdmin() => PermLevel == 2;
+    public bool IsPremium() => PremiumLevel == 10;
+
+    }

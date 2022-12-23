@@ -43,7 +43,8 @@ public static class Program {
         { "stripe_test_key", "stripe_api_key" },
         { "stripe_webhook_secret", "we_**************" },
         { "stripe_testing_webhook_secret", "we_**************" },
-        { "stripe_premium_sub_id", "SerblePremiumPriceID" }
+        { "stripe_premium_sub_id", "SerblePremiumPriceID" },
+        { "give_products_to_non_admins_while_testing", "false" }
     };
     public static Dictionary<string, string>? Config;
     public static IStorageService? StorageService;
@@ -127,7 +128,7 @@ public static class Program {
         _configManager = new ConfigManager("config.json", ConfigDefaults);
         Config = _configManager.LoadConfig();
         Testing = Config["testing"] == "true";
-        StripeConfiguration.ApiKey = Config["stripe_key"];
+        StripeConfiguration.ApiKey = Testing ? Config["stripe_test_key"] : Config["stripe_key"];
         Logger.Info("Config loaded.");
         
         // Storage service

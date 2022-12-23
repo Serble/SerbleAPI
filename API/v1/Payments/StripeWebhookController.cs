@@ -26,6 +26,7 @@ public class StripeWebhookController : ControllerManager {
             stripeEvent = EventUtility.ConstructEvent(json,
                     signatureHeader, endpointSecret);
             bool liveMode = stripeEvent.Livemode;
+            bool fulfillOrderForNonAdmins = Program.Config["give_products_to_non_admins_while_testing"] == "true";
             switch (stripeEvent.Type) {
                 
                 case Events.CustomerSubscriptionDeleted: {
@@ -40,7 +41,9 @@ public class StripeWebhookController : ControllerManager {
                     }
                     user.PremiumLevel = 0;
 
-                    Program.StorageService.UpdateUser(user);
+                    if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
+                        Program.StorageService.UpdateUser(user);
+                    }
 
                     // Send email
                     if (user.VerifiedEmail) {
@@ -111,7 +114,9 @@ public class StripeWebhookController : ControllerManager {
                             
                         }
                     });
-                    user.RegisterChanges();
+                    if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
+                        user.RegisterChanges();
+                    }
 
                     if (user.VerifiedEmail) {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt);
