@@ -32,6 +32,9 @@
       <None Update="Data\EmailSchemas\subscription_ended.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
+      <None Update="Data\EmailSchemas\free_trial_ending.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>

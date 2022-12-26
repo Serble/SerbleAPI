@@ -12,24 +12,19 @@ public class AccountController : ControllerManager {
     
     [HttpGet]
     public ActionResult<SanitisedUser> Get([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
-            Logger.Debug("Check failed: " + msg);
-            return Unauthorized();
-        }
-
-        return new SanitisedUser(target, scopes);
+        if (authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg,
+                out User target)) return new SanitisedUser(target, scopes);
+        return Unauthorized();
     }
     
     [HttpDelete]
     public ActionResult Delete([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
         if (!authorizationHeader.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string msg, out User target)) {
-            Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
 
         IEnumerable<ScopeHandler.ScopesEnum> scopesListEnum = ScopeHandler.ScopesIdsToEnumArray(ScopeHandler.StringToListOfScopeIds(scopes));
         if (!scopesListEnum.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
-            Logger.Debug("No full access");
             return Unauthorized();
         }
         

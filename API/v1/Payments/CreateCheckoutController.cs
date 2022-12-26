@@ -6,7 +6,7 @@ using SerbleAPI.Data.Schemas;
 using Stripe;
 using Stripe.Checkout;
 
-namespace SerbleAPI.API.v1.Payments; 
+namespace SerbleAPI.API.v1.Payments;
 
 [Route("api/v1/payments")]
 [Controller]
@@ -34,6 +34,7 @@ public class CreateCheckoutController : ControllerManager {
             return BadRequest();
         }
 
+        target.EnsureStripeCustomer();
         SessionCreateOptions options = new() {
             LineItems = new List<SessionLineItemOptions> {
                 new() {
@@ -46,19 +47,6 @@ public class CreateCheckoutController : ControllerManager {
             CancelUrl = domain + "/store/cancel",
             ClientReferenceId = user_id
         };
-        
-        // Use existing user or known email
-        if (!string.IsNullOrWhiteSpace(target.StripeCustomerId)) {
-            Logger.Debug("Using existing customer id: " + target.StripeCustomerId);
-            options.Customer = target.StripeCustomerId;
-        }
-        else if (target.VerifiedEmail) {
-            Logger.Debug($"Using existing email because no customer id (ID: {target.StripeCustomerId}) was found: " + target.Email);
-            options.CustomerEmail = target.Email;
-        }
-        else {
-            Logger.Debug($"No customer id (ID: {target.StripeCustomerId}) or email found, creating new customer");
-        }
 
         SessionService service = new();
         Session session = service.Create(options);
@@ -111,11 +99,9 @@ public class CreateCheckoutController : ControllerManager {
             return Forbid("Insufficient scope");
         }
         
+        target.EnsureStripeCustomer();
         string? stripeCustomerId = target.StripeCustomerId;
-        if (string.IsNullOrWhiteSpace(stripeCustomerId)) {
-            return BadRequest("User is not a customer.");
-        }
-        
+
         string returnUrl = Program.Config!["website_url"];
 
         Stripe.BillingPortal.SessionCreateOptions options = new() {

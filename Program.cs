@@ -132,6 +132,29 @@ public static class Program {
         StripeConfiguration.ApiKey = Testing ? Config["stripe_test_key"] : Config["stripe_key"];
         Logger.Info("Config loaded.");
         
+        // Loglevel
+        switch (Config["logging_level"]) {
+            case "0":
+                Logger.LoggingLevel = LogLevel.None;
+                break;
+            case "1":
+                Logger.LoggingLevel = LogLevel.Debug;
+                break;
+            case "2":
+                Logger.LoggingLevel = LogLevel.Info;
+                break;
+            case "3":
+                Logger.LoggingLevel = LogLevel.Warn;
+                break;
+            case "4":
+                Logger.LoggingLevel = LogLevel.Error;
+                break;
+            default:
+                Logger.Error("Invalid logging level in config, defaulting to Info.");
+                Logger.LoggingLevel = LogLevel.Info;
+                break;
+        }
+
         // Storage service
         try {
             StorageService = Config["storage_service"].ToLower() switch {

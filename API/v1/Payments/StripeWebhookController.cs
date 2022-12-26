@@ -15,10 +15,6 @@ public class StripeWebhookController : ControllerManager {
     [HttpPost]
     public async Task<IActionResult> StripeWebhookCallback() {
         string json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-        // Replace this endpoint secret with your endpoint's unique secret
-        // If you are testing with the CLI, find the secret by running 'stripe listen'
-        // If you are using an endpoint defined with the API or dashboard, look in your webhook settings
-        // at https://dashboard.stripe.com/webhooks
         string endpointSecret = Program.Testing ? Program.Config!["stripe_testing_webhook_secret"] : Program.Config!["stripe_webhook_secret"];
         try {
             Event? stripeEvent = EventUtility.ParseEvent(json);
@@ -50,7 +46,7 @@ public class StripeWebhookController : ControllerManager {
 
                     // Send email
                     if (user.VerifiedEmail) {
-                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.Subscription_Ended);
+                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.SubscriptionEnded);
                         emailBody = emailBody.Replace("{name}", user.Username);
                         Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System, "Subscription Cancelled", emailBody);
                         email.SendNonBlocking();
@@ -70,7 +66,8 @@ public class StripeWebhookController : ControllerManager {
                     }
                     Program.StorageService!.GetUser(session.ClientReferenceId, out User? user);
                     if (user == null) {
-                        Logger.Error("User not found for session: " + session.Id);
+                        // User probably deleted their account
+                        Logger.Debug("User not found for checkout session: " + session.Id);
                         break;
                     }
                     Logger.Debug($"Checkout session completed: " + session.Id + " for user " + user.Username);
@@ -136,14 +133,31 @@ public class StripeWebhookController : ControllerManager {
                 }
                 
                 case Events.CustomerSubscriptionCreated: {
-                    Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                    Logger.Debug("Subscription created: " + subscription!.Id);
                     break;
                 }
                 
                 case Events.CustomerSubscriptionTrialWillEnd: {
-                    Subscription? subscription = stripeEvent.Data.Object as Subscription;
-                    Logger.Debug("Subscription trial will end: " + subscription!.Id);
+                    Subscription subscription = (stripeEvent.Data.Object as Subscription).ThrowIfNull();
+                    Program.StorageService!.GetUserFromStripeCustomerId(subscription.CustomerId, out User? user);
+                    if (user == null) {
+                        // User probably deleted their account
+                        Logger.Debug("User not found for subscription: " + subscription.Id);
+                        break;
+                    }
+                    if (!user.VerifiedEmail) {
+                        break;
+                    }
+                    if (subscription.TrialEnd == null) {
+                        // No trial
+                        Logger.Error("No trial end date found for subscription in Trial End webhook: " + subscription.Id);
+                        break;
+                    }
+                    string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.FreeTrialEnding);
+                    emailBody = emailBody.Replace("{name}", user.Username)
+                        .Replace("{trial_end_date}", subscription.TrialEnd.Value.ToString("MMMM dd, yyyy"))
+                        .Replace("{trial_end_time}", subscription.TrialEnd.Value.ToString("h:mm tt"));
+                    Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System, "Subscription Trial Ending", emailBody);
+                    email.SendNonBlocking();
                     break;
                 }
                 

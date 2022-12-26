@@ -1,4 +1,5 @@
 using GeneralPurposeLib;
+using Stripe;
 
 namespace SerbleAPI.Data.Schemas; 
 
@@ -73,6 +74,18 @@ public class User {
             Program.StorageService!.DeleteAuthorizedApp(Id, authedApp.AppId);
         }
         Program.StorageService!.AddAuthorizedApp(Id, app);
+    }
+    
+    public void EnsureStripeCustomer() {
+        if (StripeCustomerId != null) return;
+        CustomerCreateOptions options = new() {
+            Email = Email,
+            Name = Username
+        };
+        CustomerService service = new();
+        Customer customer = service.Create(options);
+        StripeCustomerId = customer.Id;
+        RegisterChanges();
     }
 
     public void RegisterChanges() {
