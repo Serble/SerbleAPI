@@ -13,25 +13,26 @@ namespace SerbleAPI.API.v1.Payments;
 public class CreateCheckoutController : ControllerManager {
     
     [HttpPost("checkout")]
-    public ActionResult CreateCheckoutSession([FromQuery] string user_id) {
-        // Try get user
-        Program.StorageService!.GetUser(user_id, out User? target);
-        if (target == null) return BadRequest("User not found");
-        
+    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] string[] items) {
+        if (!authorization.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string _, out User? target)) {
+            return Unauthorized();
+        }
+
+        ScopeHandler.ScopesEnum[] scopeStringToEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
+        if (!scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
+            return Forbid();
+        }
+
         string domain = Program.Config!["website_url"];
-        
-        Logger.Debug("Price key: " + Request.Form["lookup_key"]);
 
         PriceListOptions priceOptions = new() {
-            LookupKeys = new List<string> {
-                Request.Form["lookup_key"]
-            }
+            LookupKeys = ProductManager.GetProductsFromIds(items).ToLookupIdArray().ToList()
         };
         PriceService priceService = new();
         StripeList<Price> prices = priceService.List(priceOptions);
 
         if (!prices.Any()) {
-            return BadRequest();
+            return BadRequest("No valid items were provided");
         }
 
         target.EnsureStripeCustomer();
@@ -45,7 +46,7 @@ public class CreateCheckoutController : ControllerManager {
             Mode = "subscription",
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
-            ClientReferenceId = user_id,
+            ClientReferenceId = target.Id,
             Customer = target.StripeCustomerId
         };
 
@@ -53,7 +54,7 @@ public class CreateCheckoutController : ControllerManager {
         Session session = service.Create(options);
 
         Response.Headers.Add("Location", session.Url);
-        return new StatusCodeResult(303);
+        return new { url = session.Url };
     }
     
     [HttpPost("portal")]
@@ -112,6 +113,7 @@ public class CreateCheckoutController : ControllerManager {
         Stripe.BillingPortal.SessionService service = new();
         Stripe.BillingPortal.Session? session = service.Create(options);
 
+        Response.Headers.Add("Location", session.Url);
         return new { url = session.Url };
     }
 

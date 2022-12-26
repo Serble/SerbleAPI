@@ -13,6 +13,45 @@ public static class ProductManager {
             return SerbleProduct.Unknown;
         }
     }
+
+    public static string GetLookupId(this SerbleProduct product) {
+        return product switch {
+            SerbleProduct.Premium => (Program.Testing ? "test_" : "") + "serble_premium_price",
+            SerbleProduct.Unknown => "unknown",
+            _ => "unknown"
+        };
+    }
+    
+    public static string GetPriceId(this SerbleProduct product) {
+        return product switch {
+            SerbleProduct.Premium => Program.Config!["stripe_premium_sub_id"],
+            SerbleProduct.Unknown => "unknown",
+            _ => "unknown"
+        };
+    }
+    
+    public static string GetId(this SerbleProduct product) {
+        return product switch {
+            SerbleProduct.Premium => "premium",
+            SerbleProduct.Unknown => "unknown",
+            _ => "unknown"
+        };
+    }
+    
+    public static SerbleProduct GetProductFromId(string id) {
+        return id switch {
+            "premium" => SerbleProduct.Premium,
+            _ => SerbleProduct.Unknown
+        };
+    }
+    
+    public static SerbleProduct[] GetProductsFromIds(string[] ids) {
+        return ids.Select(GetProductFromId).ToArray();
+    }
+    
+    public static string[] ToLookupIdArray(this IEnumerable<SerbleProduct> products) {
+        return products.Select(product => product.GetLookupId()).ToArray();
+    }
     
     public static SerbleProduct[] ListOfProductsFromUser(User target) {
         if (string.IsNullOrWhiteSpace(target.StripeCustomerId)) {
