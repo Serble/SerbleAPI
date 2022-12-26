@@ -79,9 +79,11 @@ public class User {
     public void EnsureStripeCustomer() {
         if (StripeCustomerId != null) return;
         CustomerCreateOptions options = new() {
-            Email = Email,
             Name = Username
         };
+        if (VerifiedEmail) {
+            options.Email = Email;
+        }
         CustomerService service = new();
         Customer customer = service.Create(options);
         StripeCustomerId = customer.Id;

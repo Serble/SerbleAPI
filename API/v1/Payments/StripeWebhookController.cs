@@ -103,8 +103,6 @@ public class StripeWebhookController : ControllerManager {
                                     Logger.Error("No subscriptions found for customer: " + session.CustomerId);
                                     break;
                                 }
-                                user.StripeCustomerId = session.CustomerId;
-                                Logger.Debug("SETTING ID, Subscription ID: " + user.StripeCustomerId);
                                 break;
                             
                             case SerbleProduct.Unknown:
