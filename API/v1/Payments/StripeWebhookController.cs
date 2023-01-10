@@ -20,11 +20,11 @@ public class StripeWebhookController : ControllerManager {
             Event? stripeEvent = EventUtility.ParseEvent(json);
             StringValues signatureHeader = Request.Headers["Stripe-Signature"];
             stripeEvent = EventUtility.ConstructEvent(json,
-                    signatureHeader, endpointSecret);
+                signatureHeader, endpointSecret);
             bool liveMode = stripeEvent.Livemode;
             bool fulfillOrderForNonAdmins = Program.Config["give_products_to_non_admins_while_testing"] == "true";
             switch (stripeEvent.Type) {
-                
+
                 case Events.CustomerSubscriptionDeleted: {
                     if (stripeEvent.Data.Object is not Subscription subscription) break;
                     Logger.Debug("Subscription canceled: " + subscription.Id);
@@ -35,41 +35,47 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Debug("User not found for subscription: " + subscription.Id);
                         break;
                     }
+
                     user.PremiumLevel = 0;
 
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
                         Program.StorageService.UpdateUser(user);
                     }
                     else {
-                        Logger.Debug("Not removing subscription for user " + user.Username + " because they are not an admin and we are not in live mode");
+                        Logger.Debug("Not removing subscription for user " + user.Username +
+                                     " because they are not an admin and we are not in live mode");
                     }
 
                     // Send email
                     if (user.VerifiedEmail) {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.SubscriptionEnded);
                         emailBody = emailBody.Replace("{name}", user.Username);
-                        Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System, "Subscription Cancelled", emailBody);
+                        Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System,
+                            "Subscription Cancelled", emailBody);
                         email.SendNonBlocking();
                     }
+
                     break;
                 }
-                
+
                 case Events.CustomerSubscriptionUpdated: {
                     Subscription? subscription = stripeEvent.Data.Object as Subscription;
                     Logger.Debug("Subscription updated: " + subscription!.Id);
                     break;
                 }
-                
+
                 case Events.CheckoutSessionCompleted: {
                     if (stripeEvent.Data.Object is not Session session) {
-                        break;  // Error maybe?
+                        break; // Error maybe?
                     }
+
                     Program.StorageService!.GetUser(session.ClientReferenceId, out User? user);
                     if (user == null) {
                         // User probably deleted their account
                         Logger.Debug("User not found for checkout session: " + session.Id);
                         break;
                     }
+
                     Logger.Debug($"Checkout session completed: " + session.Id + " for user " + user.Username);
 
                     // Get what was purchased
@@ -81,6 +87,7 @@ public class StripeWebhookController : ControllerManager {
                     if (lineItems.Data.Count == 0) {
                         Logger.Warn("No line items found for session: " + session.Id);
                     }
+
                     List<string> purchasedItems = new();
                     lineItems.Data.ForEach(item => {
                         Logger.Debug("Item Bought: " + item.Description);
@@ -88,7 +95,7 @@ public class StripeWebhookController : ControllerManager {
 
                         SerbleProduct product = ProductManager.GetProductFromPriceId(item.Price.Id);
                         switch (product) {
-                            
+
                             case SerbleProduct.Premium:
                                 Logger.Debug("Giving user " + user.Username + " 1 month of premium (Product ID)");
                                 user.PremiumLevel = 10;
@@ -98,18 +105,20 @@ public class StripeWebhookController : ControllerManager {
                                     Limit = 1,
                                     Customer = session.CustomerId
                                 };
-                                StripeList<Subscription> subscriptions = subscriptionService.ListAsync(subscriptionOptions).Result;
+                                StripeList<Subscription> subscriptions =
+                                    subscriptionService.ListAsync(subscriptionOptions).Result;
                                 if (subscriptions.Data.Count == 0) {
                                     Logger.Error("No subscriptions found for customer: " + session.CustomerId);
                                     break;
                                 }
+
                                 break;
-                            
+
                             case SerbleProduct.Unknown:
                             default:
                                 Logger.Error("Unknown item bought: " + item.Price.Id);
                                 break;
-                            
+
                         }
                     });
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
@@ -123,17 +132,17 @@ public class StripeWebhookController : ControllerManager {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt);
                         emailBody = emailBody.Replace("{name}", user.Username);
                         emailBody = emailBody.Replace("{products}", string.Join(", ", purchasedItems));
-                        Email email = new(new []{user.Email}, FromAddress.System, "Purchase Receipt", emailBody);
+                        Email email = new(new[] {user.Email}, FromAddress.System, "Purchase Receipt", emailBody);
                         email.SendNonBlocking();
                     }
 
                     break;
                 }
-                
+
                 case Events.CustomerSubscriptionCreated: {
                     break;
                 }
-                
+
                 case Events.CustomerSubscriptionTrialWillEnd: {
                     Subscription subscription = (stripeEvent.Data.Object as Subscription).ThrowIfNull();
                     Program.StorageService!.GetUserFromStripeCustomerId(subscription.CustomerId, out User? user);
@@ -142,30 +151,39 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Debug("User not found for subscription: " + subscription.Id);
                         break;
                     }
+
                     if (!user.VerifiedEmail) {
                         break;
                     }
+
                     if (subscription.TrialEnd == null) {
                         // No trial
-                        Logger.Error("No trial end date found for subscription in Trial End webhook: " + subscription.Id);
+                        Logger.Error(
+                            "No trial end date found for subscription in Trial End webhook: " + subscription.Id);
                         break;
                     }
+
                     string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.FreeTrialEnding);
                     emailBody = emailBody.Replace("{name}", user.Username)
                         .Replace("{trial_end_date}", subscription.TrialEnd.Value.ToString("MMMM dd, yyyy"))
                         .Replace("{trial_end_time}", subscription.TrialEnd.Value.ToString("h:mm tt"));
-                    Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System, "Subscription Trial Ending", emailBody);
+                    Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System,
+                        "Subscription Trial Ending", emailBody);
                     email.SendNonBlocking();
                     break;
                 }
-                
+
                 default:
                     Logger.Error("Unhandled event type: " + stripeEvent.Type);
                     break;
             }
+
             return Ok();
         }
-        catch (StripeException e) {
+        catch (StripeException) {
+            return BadRequest();
+        }
+        catch (Exception e) {
             Logger.Error(e);
             return BadRequest();
         }
