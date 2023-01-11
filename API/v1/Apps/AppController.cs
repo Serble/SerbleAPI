@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 
@@ -21,8 +22,12 @@ public class AppController : ControllerManager {
     
     [HttpGet("{appid}")]
     public IActionResult GetInfo(string appid, [FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? _, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
             return BadRequest(msg);
+        }
+        
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageApps)) {
+            return Forbid("Scope ManageApps is required.");
         }
         
         Program.StorageService!.GetOAuthApp(appid, out OAuthApp? app);
@@ -40,8 +45,12 @@ public class AppController : ControllerManager {
     
     [HttpGet]
     public IActionResult GetAll([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? _, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
             return Unauthorized(msg);
+        }
+        
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageApps)) {
+            return Forbid("Scope ManageApps is required.");
         }
         
         Program.StorageService!.GetOAuthAppsFromUser(target.Id, out OAuthApp[] apps);
@@ -52,8 +61,12 @@ public class AppController : ControllerManager {
     
     [HttpDelete("{appid}")]
     public IActionResult Delete(string appid, [FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? _, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? authType, out string? msg, out User target)) {
             return Unauthorized(msg);
+        }
+        
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageApps)) {
+            return Forbid("Scope ManageApps is required.");
         }
 
         Program.StorageService!.GetOAuthApp(appid, out OAuthApp? app);
@@ -71,8 +84,12 @@ public class AppController : ControllerManager {
     
     [HttpPost]
     public IActionResult CreateApp([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] NewOAuthApp app) {
-        if (!authorizationHeader.Check(out string? _, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             return Unauthorized(msg);
+        }
+        
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageApps)) {
+            return Forbid("Scope ManageApps is required.");
         }
 
         Program.StorageService!.AddOAuthApp(new OAuthApp(target.Id) {Description = app.Description, Name = app.Name});

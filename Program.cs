@@ -2,7 +2,6 @@ using System.Security;
 using GeneralPurposeLib;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Raw;
-using SerbleAPI.Data.Schemas;
 using SerbleAPI.Data.Storage;
 using Stripe;
 using File = System.IO.File;
@@ -51,9 +50,8 @@ public static class Program {
     public static IStorageService? StorageService;
     public static bool RunApp = true;
     public static bool RestartApp = false;
-    public static bool RestartAppOnce = false;
-    public static Lockdown? Lockdown = null;
-    public static bool Testing = false;
+    public static bool RestartAppOnce;
+    public static bool Testing;
     
     private static int Main(string[] args) {
 
@@ -80,7 +78,6 @@ public static class Program {
         catch (Exception e) {
             Logger.Error(e);
             Logger.Error("The application has crashed due to an unhandled exception.");
-            Logger.WaitFlush();
             stopCode = 1;
         }
 
@@ -214,7 +211,7 @@ public static class Program {
         }
         catch (Exception e) {
             Logger.Error(e);
-            Logger.Error("Failed to initialize services");
+            Logger.Error("Failed to add services");
             return 1;
         }
         
@@ -232,11 +229,9 @@ public static class Program {
         WebApplication app;
         try {
             app = builder.Build();
-
-            // Configure the HTTP request pipeline.
+            
             if (!app.Environment.IsDevelopment()) {
                 app.UseExceptionHandler("/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
 

@@ -19,19 +19,18 @@ public class AccountController : ControllerManager {
     
     [HttpDelete]
     public ActionResult Delete([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string msg, out User target)) {
+        if (!authorizationHeader.Check(out string _, out SerbleAuthorizationHeaderType? type, out string msg, out User target)) {
             return Unauthorized();
         }
 
-        IEnumerable<ScopeHandler.ScopesEnum> scopesListEnum = ScopeHandler.ScopesIdsToEnumArray(ScopeHandler.StringToListOfScopeIds(scopes));
-        if (!scopesListEnum.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
-            return Unauthorized();
+        if (type != SerbleAuthorizationHeaderType.User) {
+            return Forbid();
         }
-        
+
         // Delete the user's account
         Program.StorageService!.DeleteUser(target.Id);
         
-        if (target.Email == "") return Ok();
+        if (!target.VerifiedEmail) return Ok();
         
         // Send an email
         string body = EmailSchemasService.GetEmailSchema(EmailSchema.AccountDeleted);
@@ -67,9 +66,17 @@ public class AccountController : ControllerManager {
 
     [HttpPatch]
     public Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? type, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
+        }
+        
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageAccount)) {
+            return Task.FromResult<ActionResult<SanitisedUser>>(Forbid("Scope ManageAccount is required."));
+        }
+
+        if (edits.Any(e => e.Field.ToLower() == "password") && type != SerbleAuthorizationHeaderType.User) {
+            return Task.FromResult<ActionResult<SanitisedUser>>(Forbid());
         }
 
         string originalEmail = target.Email;

@@ -11,14 +11,18 @@ namespace SerbleAPI.API.v1.Account;
 public class AuthorizedAppsController : ControllerManager {
 
     [HttpGet]
-    public IActionResult GetAll([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? _, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
+    public ActionResult<AuthorizedApp[]> GetAll([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
+        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg, out User target)) {
             Logger.Debug("Check failed: " + msg);
             return Unauthorized();
         }
         
+        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageAccount)) {
+            return Forbid("Scope ManageAccount is required.");
+        }
+        
         target.ObtainAuthorizedApps();
-        return Ok(target.AuthorizedApps.ToJson());
+        return target.AuthorizedApps;
     }
 
     [HttpPost]
