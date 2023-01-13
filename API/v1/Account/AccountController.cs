@@ -33,7 +33,7 @@ public class AccountController : ControllerManager {
         if (!target.VerifiedEmail) return Ok();
         
         // Send an email
-        string body = EmailSchemasService.GetEmailSchema(EmailSchema.AccountDeleted);
+        string body = EmailSchemasService.GetEmailSchema(EmailSchema.AccountDeleted, LocalisationHandler.LanguageOrDefault(target));
         body = body.Replace("{name}", target.Username);
         Email email = new(
             target.Email.ToSingleItemEnumerable().ToArray(), 
@@ -97,7 +97,7 @@ public class AccountController : ControllerManager {
             EmailConfirmationService.SendConfirmationEmail(newUser);
             
             // Send email to old email
-            string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged);
+            string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged, LocalisationHandler.LanguageOrDefault(target));
             body = body.Replace("{name}", target.Username);
             body = body.Replace("{new_email}", newUser.Email);
             body = body.Replace("{old_email}", originalEmail);

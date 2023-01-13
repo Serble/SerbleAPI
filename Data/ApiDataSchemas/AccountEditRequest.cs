@@ -38,6 +38,13 @@ public class AccountEditRequest {
                 }
                 target.Email = NewValue;
                 break;
+            
+            case "language":
+                if (NewValue.Length > 3) {
+                    throw new ArgumentException("Language code is too long");
+                }
+                target.Language = NewValue;
+                break;
 
             default:
                 throw new ArgumentException("Field doesn't exist");

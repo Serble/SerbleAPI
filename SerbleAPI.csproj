@@ -17,22 +17,22 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="Data\EmailSchemas\email_confirm.html">
+      <None Update="Data\EmailSchemas\en\account_deleted.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="Data\EmailSchemas\account_deleted.html">
+      <None Update="Data\EmailSchemas\en\email_changed.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="Data\EmailSchemas\email_changed.html">
+      <None Update="Data\EmailSchemas\en\email_confirm.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="Data\EmailSchemas\purchase_receipt.html">
+      <None Update="Data\EmailSchemas\en\free_trial_ending.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="Data\EmailSchemas\subscription_ended.html">
+      <None Update="Data\EmailSchemas\en\purchase_receipt.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="Data\EmailSchemas\free_trial_ending.html">
+      <None Update="Data\EmailSchemas\en\subscription_ended.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
     </ItemGroup>

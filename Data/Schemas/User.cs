@@ -20,6 +20,7 @@ public class User {
     /// </summary>
     public int PremiumLevel { get; set; }
     public string? StripeCustomerId { get; set; }
+    public string? Language { get; set; }
     
     public AuthorizedApp[] AuthorizedApps {
         get {
@@ -48,6 +49,7 @@ public class User {
         PermLevel = 0;
         PremiumLevel = 0;
         PermString = "";
+        Language = "en";
         VerifiedEmail = false;
         _originalAuthedApps = Array.Empty<AuthorizedApp>();
         StripeCustomerId = null;

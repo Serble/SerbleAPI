@@ -33,7 +33,8 @@ public class MySqlStorageService : IStorageService {
                            permlevel INT,
                            permstring VARCHAR(64),
                            premiumLevel INT,
-                           subscriptionId VARCHAR(32))");
+                           subscriptionId VARCHAR(32),
+                           language VARCHAR(8))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_authorized_apps(
                            userid VARCHAR(64),
                            appid VARCHAR(64),
@@ -57,8 +58,8 @@ public class MySqlStorageService : IStorageService {
         userDetails.Id = Guid.NewGuid().ToString();
         MySqlHelper.ExecuteNonQuery(_connectString!, 
             "INSERT INTO serblesite_users(" +
-            "id, username, email, verifiedEmail, password, permlevel, permstring, premiumLevel, subscriptionId) " +
-            "VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @premiumLevel, @subscriptionId)",
+            "id, username, email, verifiedEmail, password, permlevel, permstring, premiumLevel, subscriptionId, language) " +
+            "VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @premiumLevel, @subscriptionId, @language)",
             new MySqlParameter("@id", userDetails.Id),
             new MySqlParameter("@username", userDetails.Username),
             new MySqlParameter("@email", userDetails.Email),
@@ -67,7 +68,8 @@ public class MySqlStorageService : IStorageService {
             new MySqlParameter("@permlevel", userDetails.PermLevel),
             new MySqlParameter("@permstring", userDetails.PermString),
             new MySqlParameter("@premiumLevel", userDetails.PremiumLevel),
-            new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId));
+            new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId),
+            new MySqlParameter("@language", userDetails.Language));
         newUser = userDetails;
     }
 
@@ -79,6 +81,7 @@ public class MySqlStorageService : IStorageService {
             return;
         }
         string? subId = reader.IsDBNull("subscriptionId") ? null : reader.GetString("subscriptionId");
+        string? language = reader.IsDBNull("language") ? null : reader.GetString("language");
         user = new User {
             Id = reader.GetString("id"),
             Username = reader.GetString("username"),
@@ -88,7 +91,8 @@ public class MySqlStorageService : IStorageService {
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring"),
             PremiumLevel = reader.GetInt32("premiumLevel"),
-            StripeCustomerId = subId
+            StripeCustomerId = subId,
+            Language = language
         };
 
         reader.Close();
@@ -115,7 +119,8 @@ public class MySqlStorageService : IStorageService {
                                                     "permlevel=@permlevel, " +
                                                     "permstring=@permstring, " +
                                                     "premiumLevel=@premiumLevel, " +
-                                                    "subscriptionId=@subscriptionId " +
+                                                    "subscriptionId=@subscriptionId," +
+                                                    "language=@language " +
                                                     "WHERE id=@id",
             new MySqlParameter("@username", userDetails.Username),
             new MySqlParameter("@email", userDetails.Email),
@@ -125,7 +130,8 @@ public class MySqlStorageService : IStorageService {
             new MySqlParameter("@permstring", userDetails.PermString),
             new MySqlParameter("@premiumLevel", userDetails.PremiumLevel),
             new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId),
-            new MySqlParameter("@id", userDetails.Id));
+            new MySqlParameter("@id", userDetails.Id),
+            new MySqlParameter("@language", userDetails.Language));
     }
 
     public void DeleteUser(string userId) {

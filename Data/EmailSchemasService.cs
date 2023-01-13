@@ -4,23 +4,24 @@ public static class EmailSchemasService {
 
     private static readonly Dictionary<string, string> LoadedSchemas = new();
 
-    public static string GetEmailSchema(EmailSchema schema) {
+    public static string GetEmailSchema(EmailSchema schema, string language = "en") {
+        language = LocalisationHandler.LanguageOrDefault(language);
         return schema switch {
-            EmailSchema.ConfirmationEmail => GetEmailSchemaFromFile("email_confirm.html"),
-            EmailSchema.AccountDeleted => GetEmailSchemaFromFile("account_deleted.html"),
-            EmailSchema.EmailChanged => GetEmailSchemaFromFile("email_changed.html"),
-            EmailSchema.PurchaseReceipt => GetEmailSchemaFromFile("purchase_receipt.html"),
-            EmailSchema.SubscriptionEnded => GetEmailSchemaFromFile("subscription_ended.html"),
-            EmailSchema.FreeTrialEnding => GetEmailSchemaFromFile("free_trial_ending.html"),
+            EmailSchema.ConfirmationEmail => GetEmailSchemaFromFile("email_confirm.html", language),
+            EmailSchema.AccountDeleted => GetEmailSchemaFromFile("account_deleted.html", language),
+            EmailSchema.EmailChanged => GetEmailSchemaFromFile("email_changed.html", language),
+            EmailSchema.PurchaseReceipt => GetEmailSchemaFromFile("purchase_receipt.html", language),
+            EmailSchema.SubscriptionEnded => GetEmailSchemaFromFile("subscription_ended.html", language),
+            EmailSchema.FreeTrialEnding => GetEmailSchemaFromFile("free_trial_ending.html", language),
             _ => throw new ArgumentException("Invalid schema")
         };
     }
 
-    private static string GetEmailSchemaFromFile(string file) {
+    private static string GetEmailSchemaFromFile(string file, string language) {
         if (LoadedSchemas.ContainsKey(file)) {
             return LoadedSchemas[file];
         }
-        string path = Path.Combine(Directory.GetCurrentDirectory(), "Data", "EmailSchemas", file);
+        string path = Path.Combine(Directory.GetCurrentDirectory(), "Data", "EmailSchemas", language, file);
         string schema = File.ReadAllText(path);
         LoadedSchemas.Add(file, schema);
         return schema;

@@ -48,7 +48,7 @@ public class StripeWebhookController : ControllerManager {
 
                     // Send email
                     if (user.VerifiedEmail) {
-                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.SubscriptionEnded);
+                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.SubscriptionEnded, LocalisationHandler.LanguageOrDefault(user));
                         emailBody = emailBody.Replace("{name}", user.Username);
                         Email email = new(user.Email.ToSingleItemEnumerable().ToArray(), FromAddress.System,
                             "Subscription Cancelled", emailBody);
@@ -129,7 +129,7 @@ public class StripeWebhookController : ControllerManager {
                     }
 
                     if (user.VerifiedEmail) {
-                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt);
+                        string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt, LocalisationHandler.LanguageOrDefault(user));
                         emailBody = emailBody.Replace("{name}", user.Username);
                         emailBody = emailBody.Replace("{products}", string.Join(", ", purchasedItems));
                         Email email = new(new[] {user.Email}, FromAddress.System, "Purchase Receipt", emailBody);
@@ -163,7 +163,7 @@ public class StripeWebhookController : ControllerManager {
                         break;
                     }
 
-                    string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.FreeTrialEnding);
+                    string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.FreeTrialEnding, LocalisationHandler.LanguageOrDefault(user));
                     emailBody = emailBody.Replace("{name}", user.Username)
                         .Replace("{trial_end_date}", subscription.TrialEnd.Value.ToString("MMMM dd, yyyy"))
                         .Replace("{trial_end_time}", subscription.TrialEnd.Value.ToString("h:mm tt"));

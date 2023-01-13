@@ -10,7 +10,7 @@ public static class EmailConfirmationService {
             throw new Exception("User has already verified their email");
         }
 
-        string body = EmailSchemasService.GetEmailSchema(EmailSchema.ConfirmationEmail);
+        string body = EmailSchemasService.GetEmailSchema(EmailSchema.ConfirmationEmail, LocalisationHandler.LanguageOrDefault(user));
         body = body.Replace("{name}", user.Username);
         body = body.Replace(
             "{confirmation_link}", 
