@@ -39,9 +39,9 @@ public class AccountEditRequest {
                 target.Email = NewValue;
                 break;
             
-            case "language":
-                if (NewValue.Length > 3) {
-                    throw new ArgumentException("Language code is too long");
+            case "language":  // LAN-RG (Language-Region region is optional)
+                if (!Regex.IsMatch(NewValue, @"^[a-z]{2}(-[A-Z]{2})?$")) {
+                    throw new ArgumentException("Invalid language");
                 }
                 target.Language = NewValue;
                 break;
