@@ -5,7 +5,7 @@ namespace SerbleAPI.Data;
 public static class LocalisationHandler {
 
     private static string[]? _supportLanguages;
-    private const string DefaultLanguage = "en";
+    private const string DefaultLanguage = "eng";
 
     public static string GetPreferredLanguage(HttpRequest request) {
         LoadSupportedLanguages();
