@@ -40,7 +40,7 @@ public class AccountEditRequest {
                 break;
             
             case "language":  // LAN-RG (Language-Region region is optional)
-                if (!Regex.IsMatch(NewValue, @"^[a-z]{2}(-[A-Z]{2})?$")) {
+                if (!Regex.IsMatch(NewValue, @"^[a-z]{3}(-[A-Z]{2})?$")) {
                     throw new ArgumentException("Invalid language");
                 }
                 target.Language = NewValue;
