@@ -17,24 +17,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="Data\EmailSchemas\en\account_deleted.html">
+        <None Update="Data\EmailSchemas\*\*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="Data\EmailSchemas\en\email_changed.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="Data\EmailSchemas\en\email_confirm.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="Data\EmailSchemas\en\free_trial_ending.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="Data\EmailSchemas\en\purchase_receipt.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="Data\EmailSchemas\en\subscription_ended.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+        </None>
     </ItemGroup>
 
 </Project>
