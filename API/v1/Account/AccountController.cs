@@ -95,6 +95,8 @@ public class AccountController : ControllerManager {
             newUser.VerifiedEmail = false;
             Logger.Debug("Sending email verification");
             EmailConfirmationService.SendConfirmationEmail(newUser);
+
+            Dictionary<string, string> t = LocalisationHandler.GetTranslations(newUser);
             
             // Send email to old email
             string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged, LocalisationHandler.LanguageOrDefault(target));
@@ -103,7 +105,7 @@ public class AccountController : ControllerManager {
             body = body.Replace("{old_email}", originalEmail);
             Email email = new(
                 originalEmail.ToSingleItemEnumerable().ToArray(), 
-                FromAddress.System, "Serble Email Changed", 
+                FromAddress.System, t["email-changed-subject"], 
                 body);
             email.SendNonBlocking();  // Don't await so the thread can continue
         }
