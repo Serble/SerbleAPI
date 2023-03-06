@@ -19,6 +19,9 @@
         <None Update="Data\EmailSchemas\*\*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
+        <None Update="Translations\supported-languages.txt">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

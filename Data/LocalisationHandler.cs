@@ -39,7 +39,7 @@ public static class LocalisationHandler {
     }
     
     private static void LoadSupportedLanguages() {
-        _supportLanguages ??= File.ReadAllLines(Path.Combine("Data", "EmailSchemas", "supported-languages.txt"));
+        _supportLanguages ??= File.ReadAllLines(Path.Combine("Translations", "supported-languages.txt"));
     }
 
 }
