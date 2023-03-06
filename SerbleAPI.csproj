@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="Data\EmailSchemas\*\*">
+        <None Update="Translations\*\*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
         <None Update="Translations\supported-languages.txt">
