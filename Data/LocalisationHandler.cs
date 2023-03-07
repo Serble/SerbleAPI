@@ -53,9 +53,13 @@ public static class LocalisationHandler {
     
     private static void LoadSupportedLanguages() {
         _supportLanguages ??= File.ReadAllLines(Path.Combine("Translations", "supported-languages.txt"));
+
+        if (_translations != null) {
+            return;
+        }
         
         // Load Translations
-        _translations ??= new Dictionary<string, Dictionary<string, string>>();
+        _translations = new Dictionary<string, Dictionary<string, string>>();
         foreach (string lang in _supportLanguages) {
             string translationPath = Path.Combine("Translations", lang, "translations.yaml");
             if (!File.Exists(translationPath)) {
