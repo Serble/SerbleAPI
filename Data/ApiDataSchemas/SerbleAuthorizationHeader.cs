@@ -71,6 +71,42 @@ public class SerbleAuthorizationHeader {
         }
         
     }
+
+    public bool CheckAndGetInfo(out User user,
+        out Dictionary<string, string> userTranslations,
+        ScopeHandler.ScopesEnum? requiredScope = null,
+        bool allowApps = true,
+        HttpRequest? request = null) {
+        return CheckAndGetInfo(out user, out userTranslations, out SerbleAuthorizationHeaderType _, out string _, requiredScope, allowApps, request);
+    }
+    
+    public bool CheckAndGetInfo(out User user, 
+        out Dictionary<string, string> userTranslations, 
+        out SerbleAuthorizationHeaderType type,
+        out string scopes,
+        ScopeHandler.ScopesEnum? requiredScope = null, 
+        bool allowApps = true, 
+        HttpRequest? request = null) {
+        
+        // Init defaults
+        user = null!;
+        userTranslations = null!;
+        type = SerbleAuthorizationHeaderType.Null;
+        
+        if (!Check(out scopes, out SerbleAuthorizationHeaderType? gottenType, out string _, out User target)) {
+            return false;
+        }
+        type = gottenType!.Value;
+        if (type == SerbleAuthorizationHeaderType.App && !allowApps) {
+            return false;
+        }
+        if (requiredScope != null && !scopes.SerbleHasScope(requiredScope.Value)) {
+            return false;
+        }
+        user = target;
+        userTranslations = LocalisationHandler.GetTranslations(LocalisationHandler.GetPreferredLanguageOrDefault(request, target));
+        return true;
+    }
     
 }
 

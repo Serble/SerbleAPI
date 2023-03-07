@@ -18,10 +18,10 @@ public static class EmailSchemasService {
     }
 
     private static string GetEmailSchemaFromFile(string file, string language) {
-        if (LoadedSchemas.ContainsKey(file)) {
-            return LoadedSchemas[file];
+        if (LoadedSchemas.TryGetValue(file, out string? fromFile)) {
+            return fromFile;
         }
-        string path = Path.Combine(Directory.GetCurrentDirectory(), "Data", "EmailSchemas", language, file);
+        string path = Path.Combine(Directory.GetCurrentDirectory(), "Translations", language, file);
         string schema = File.ReadAllText(path);
         LoadedSchemas.Add(file, schema);
         return schema;
