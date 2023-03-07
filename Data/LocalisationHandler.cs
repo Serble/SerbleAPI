@@ -38,6 +38,35 @@ public static class LocalisationHandler {
         return DefaultLanguage;
     }
 
+    public static string GetPreferredLanguageOrDefault(HttpRequest? request, User? user) {
+
+        if (request != null) {
+            if (request.Headers.ContainsKey("Serble-Language") && _supportLanguages!.Contains(request.Headers["Serble-Language"].First())) {
+                return request.Headers["Serble-Language"];
+            }
+        }
+        
+        if (user != null) {
+            return LanguageOrDefault(user);
+        }
+
+        if (request != null) {
+            if (request.Headers.ContainsKey("Content-Language") && _supportLanguages!.Contains(request.Headers["Content-Language"].First())) {
+                return request.Headers["Content-Language"];
+            }
+            
+            if (request.Headers.ContainsKey("Accept-Language")) {
+                string[] acceptLanguages = request.Headers["Accept-Language"].First().Split(',');
+                foreach (string acceptLanguage in acceptLanguages) {
+                    if (_supportLanguages!.Contains(acceptLanguage)) {
+                        return acceptLanguage;
+                    }
+                }
+            }
+        }
+        return DefaultLanguage;
+    }
+
     public static string LanguageOrDefault(string? lang) {
         LoadSupportedLanguages();
         if (lang == null) {
@@ -63,7 +92,7 @@ public static class LocalisationHandler {
         foreach (string lang in _supportLanguages) {
             string translationPath = Path.Combine("Translations", lang, "translations.yaml");
             if (!File.Exists(translationPath)) {
-                Logger.Error($"Translation file for language {lang} does not exist");
+                Logger.Error($"Translation file for language '{lang}' does not exist");
                 continue;
             }
             string translationYaml = File.ReadAllText(translationPath);
@@ -72,7 +101,7 @@ public static class LocalisationHandler {
             yaml.Load(reader);
             YamlMappingNode? root = (YamlMappingNode) yaml.Documents[0].RootNode;
             if (root == null!) {
-                Logger.Error($"Translation file for language {lang} is empty");
+                Logger.Error($"Translation file for language '{lang}' is empty");
                 continue;
             }
             Dictionary<string, string> translations = new();
@@ -86,14 +115,14 @@ public static class LocalisationHandler {
         
         // Add any keys in the default language but not in other languages to all languages
         if (!_translations.ContainsKey(DefaultLanguage)) {
-            Logger.Error($"Default language {DefaultLanguage} does not exist");
+            Logger.Error($"Default language '{DefaultLanguage}' does not exist");
             return;
         }
         Dictionary<string, string> defaultTranslations = _translations[DefaultLanguage];
         foreach (string lang in _supportLanguages) {
             if (lang == DefaultLanguage) continue;
             if (!_translations.ContainsKey(lang)) {
-                Logger.Error($"Language {lang} does not exist");
+                Logger.Error($"Language '{lang}' does not exist");
                 continue;
             }
             Dictionary<string, string> translations = _translations[lang];

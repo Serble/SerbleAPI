@@ -19,12 +19,8 @@ public class AccountController : ControllerManager {
     
     [HttpDelete]
     public ActionResult Delete([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string _, out SerbleAuthorizationHeaderType? type, out string msg, out User target)) {
+        if (!authorizationHeader.CheckAndGetInfo(out User target, out Dictionary<string, string> t, null, false, Request)) {
             return Unauthorized();
-        }
-
-        if (type != SerbleAuthorizationHeaderType.User) {
-            return Forbid();
         }
 
         // Delete the user's account
@@ -66,13 +62,8 @@ public class AccountController : ControllerManager {
 
     [HttpPatch]
     public Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? type, out string? msg, out User target)) {
-            Logger.Debug("Check failed: " + msg);
+        if (!authorizationHeader.CheckAndGetInfo(out User target, out Dictionary<string, string> t, out SerbleAuthorizationHeaderType type, out string scopes, ScopeHandler.ScopesEnum.ManageAccount, false, Request)) {
             return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
-        }
-        
-        if (!scopes.SerbleHasScope(ScopeHandler.ScopesEnum.ManageAccount)) {
-            return Task.FromResult<ActionResult<SanitisedUser>>(Forbid("Scope ManageAccount is required."));
         }
 
         if (edits.Any(e => e.Field.ToLower() == "password") && type != SerbleAuthorizationHeaderType.User) {
@@ -96,8 +87,6 @@ public class AccountController : ControllerManager {
             Logger.Debug("Sending email verification");
             EmailConfirmationService.SendConfirmationEmail(newUser);
 
-            Dictionary<string, string> t = LocalisationHandler.GetTranslations(newUser);
-            
             // Send email to old email
             string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged, LocalisationHandler.LanguageOrDefault(target));
             body = body.Replace("{name}", target.Username);
