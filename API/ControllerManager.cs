@@ -2,6 +2,7 @@ using System.Net;
 using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Primitives;
 
 namespace SerbleAPI.API; 
 
@@ -24,8 +25,8 @@ public class ControllerManager : Controller {
         base.OnActionExecuting(context);
 
         // Log the users information for debugging purposes
-        Logger.Debug(context.HttpContext.Request.Headers.ContainsKey("User-Agent") 
-            ? $"New request from: {ipStr} ({context.HttpContext.Request.Headers["User-Agent"]})"
+        Logger.Debug(context.HttpContext.Request.Headers.TryGetValue("User-Agent", out StringValues header) 
+            ? $"New request from: {ipStr} ({header})"
             : $"New request from: {ipStr} (Unknown user agent)");
         
     }
