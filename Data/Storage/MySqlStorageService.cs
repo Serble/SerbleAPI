@@ -44,7 +44,8 @@ public class MySqlStorageService : IStorageService {
                            "id VARCHAR(64), " +
                            "name VARCHAR(64), " +
                            "description VARCHAR(1024), " +
-                           "clientsecret VARCHAR(64))");
+                           "clientsecret VARCHAR(64), " + 
+                           "redirecturi VARCHAR(64))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_kv(" +
                             "k VARCHAR(64)," +
                             "v VARCHAR(1024))");
@@ -185,13 +186,14 @@ public class MySqlStorageService : IStorageService {
     }
 
     public void AddOAuthApp(OAuthApp app) {
-        MySqlHelper.ExecuteNonQuery(_connectString, "INSERT INTO serblesite_apps (id, ownerid, name, description, clientsecret) " +
-                                                    "VALUES (@id, @ownerid, @name, @description, @clientsecret)",
+        MySqlHelper.ExecuteNonQuery(_connectString, "INSERT INTO serblesite_apps (id, ownerid, name, description, clientsecret, redirecturi) " +
+                                                    "VALUES (@id, @ownerid, @name, @description, @clientsecret, @redirecturi)",
             new MySqlParameter("@id", app.Id),
             new MySqlParameter("@ownerid", app.OwnerId),
             new MySqlParameter("@name", app.Name),
             new MySqlParameter("@description", app.Description),
-            new MySqlParameter("@clientsecret", app.ClientSecret));
+            new MySqlParameter("@clientsecret", app.ClientSecret),
+            new MySqlParameter("@redirecturi", app.RedirectUri));
     }
 
     public void GetOAuthApp(string appId, out OAuthApp? app) {
@@ -205,18 +207,20 @@ public class MySqlStorageService : IStorageService {
             Id = reader.GetString("id"),
             Name = reader.GetString("name"),
             Description = reader.GetString("description"),
-            ClientSecret = reader.GetString("clientsecret")
+            ClientSecret = reader.GetString("clientsecret"),
+            RedirectUri = reader.GetString("redirecturi")
         };
         reader.Close();
     }
 
     public void UpdateOAuthApp(OAuthApp app) {
-        MySqlHelper.ExecuteNonQuery(_connectString, "UPDATE serblesite_apps SET name=@name, description=@description, clientsecret=@clientsecret, ownerid=@ownerid WHERE id=@id",
+        MySqlHelper.ExecuteNonQuery(_connectString, "UPDATE serblesite_apps SET name=@name, description=@description, clientsecret=@clientsecret, ownerid=@ownerid, redirecturi=@redirecturi WHERE id=@id",
             new MySqlParameter("@name", app.Name),
             new MySqlParameter("@ownerid", app.OwnerId),
             new MySqlParameter("@description", app.Description),
             new MySqlParameter("@clientsecret", app.ClientSecret),
-            new MySqlParameter("@id", app.Id));
+            new MySqlParameter("@id", app.Id),
+            new MySqlParameter("@redirecturi", app.RedirectUri));
     }
 
     public void DeleteOAuthApp(string appId) {
@@ -233,7 +237,8 @@ public class MySqlStorageService : IStorageService {
                 Id = reader.GetString("id"),
                 Name = reader.GetString("name"),
                 Description = reader.GetString("description"),
-                ClientSecret = reader.GetString("clientsecret")
+                ClientSecret = reader.GetString("clientsecret"),
+                RedirectUri = reader.GetString("redirecturi")
             });
         }
         reader.Close();

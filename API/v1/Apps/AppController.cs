@@ -36,7 +36,7 @@ public class AppController : ControllerManager {
         }
         
         if (target.Id != app.OwnerId) {
-            return BadRequest("User not own app");
+            return BadRequest("User does not own app");
         }
         
         string jsonObj = JsonConvert.SerializeObject(app);
@@ -92,7 +92,7 @@ public class AppController : ControllerManager {
             return Forbid("Scope ManageApps is required.");
         }
 
-        Program.StorageService!.AddOAuthApp(new OAuthApp(target.Id) {Description = app.Description, Name = app.Name});
+        Program.StorageService!.AddOAuthApp(new OAuthApp(target.Id) {Description = app.Description, Name = app.Name, RedirectUri = app.RedirectUri});
         return Ok();
     }
 

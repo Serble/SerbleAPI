@@ -4,4 +4,5 @@ namespace SerbleAPI.Data.Schemas;
 public class NewOAuthApp {
     public string Name { get; set; } = null!;
     public string Description { get; set; } = null!;
+    public string RedirectUri { get; set; } = null!;
 }
