@@ -22,6 +22,9 @@ public class AuthController : ControllerManager {
         // Valid header, check credentials
         string username = authorizationHeader.GetUsername();
         string password = authorizationHeader.GetPassword();
+        if (password.Length > 256) {
+            return BadRequest("Password cannot be longer than 256 characters");
+        }
         Program.StorageService!.GetUserFromName(username, out User? user);
         if (user == null) {
             return Unauthorized();

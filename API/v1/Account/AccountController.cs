@@ -44,6 +44,9 @@ public class AccountController : ControllerManager {
         if (!await antiSpam.Check()) {
             return BadRequest("Anti-spam check failed");
         }
+        if (requestBody.Password.Length > 256) {
+            return BadRequest("Password cannot be longer than 256 characters");
+        }
         
         Program.StorageService!.GetUserFromName(requestBody.Username, out User? existingUser);
         if (existingUser != null) {

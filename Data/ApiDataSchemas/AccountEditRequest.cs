@@ -28,6 +28,9 @@ public class AccountEditRequest {
                 break;
             
             case "password":
+                if (NewValue.Length > 256) {
+                    throw new ArgumentException("Password cannot be longer than 256 characters");
+                }
                 target.PasswordHash = NewValue.Sha256Hash();
                 break;
             
