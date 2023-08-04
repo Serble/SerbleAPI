@@ -1,4 +1,5 @@
 using GeneralPurposeLib;
+using Newtonsoft.Json;
 
 namespace SerbleAPI.Data.Raw; 
 
@@ -8,7 +9,8 @@ public static class RawDataManager {
     
     public static void LoadRawData() {
         Logger.Info("Loading words.txt");
-        EnglishWords = File.ReadAllLines("Data/Raw/words.txt");
+        string jsonArray = File.ReadAllText("Data/Raw/words.txt");
+        EnglishWords = JsonConvert.DeserializeObject<string[]>(jsonArray)!;
     }
     
 }
