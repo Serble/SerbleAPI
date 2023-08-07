@@ -35,8 +35,15 @@ public class StripeWebhookController : ControllerManager {
                         Logger.Debug("User not found for subscription: " + subscription.Id);
                         break;
                     }
-
-                    user.PremiumLevel = 0;
+                    
+                    foreach (SubscriptionItem subscriptionItem in subscription.Items) {
+                        SerbleProduct? prod = ProductManager.GetProductFromPriceId(subscriptionItem.Price.Id);
+                        if (prod == null) {
+                            continue;
+                        }
+                        Program.StorageService.RemoveOwnedProduct(user.Id, prod.Id);
+                        Logger.Debug("Removed product " + prod.Name + " from user " + user.Username);
+                    }
 
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
                         Program.StorageService.UpdateUser(user);
@@ -76,7 +83,7 @@ public class StripeWebhookController : ControllerManager {
                         break;
                     }
 
-                    Logger.Debug($"Checkout session completed: " + session.Id + " for user " + user.Username);
+                    Logger.Debug("Checkout session completed: " + session.Id + " for user " + user.Username);
 
                     // Get what was purchased
                     SessionListLineItemsOptions options = new() {
@@ -89,40 +96,20 @@ public class StripeWebhookController : ControllerManager {
                     }
 
                     List<string> purchasedItems = new();
+                    List<string> itemIds = new();
                     lineItems.Data.ForEach(item => {
                         Logger.Debug("Item Bought: " + item.Description);
                         purchasedItems.Add($"<li>{item.Description}</li>");
 
-                        SerbleProduct product = ProductManager.GetProductFromPriceId(item.Price.Id);
-                        switch (product) {
-
-                            case SerbleProduct.Premium:
-                                Logger.Debug("Giving user " + user.Username + " 1 month of premium (Product ID)");
-                                user.PremiumLevel = 10;
-                                // Get the id of their new subscription
-                                SubscriptionService subscriptionService = new();
-                                SubscriptionListOptions subscriptionOptions = new() {
-                                    Limit = 1,
-                                    Customer = session.CustomerId
-                                };
-                                StripeList<Subscription> subscriptions =
-                                    subscriptionService.ListAsync(subscriptionOptions).Result;
-                                if (subscriptions.Data.Count == 0) {
-                                    Logger.Error("No subscriptions found for customer: " + session.CustomerId);
-                                    break;
-                                }
-
-                                break;
-
-                            case SerbleProduct.Unknown:
-                            default:
-                                Logger.Error("Unknown item bought: " + item.Price.Id);
-                                break;
-
+                        SerbleProduct? product = ProductManager.GetProductFromPriceId(item.Price.Id);
+                        if (product == null) {
+                            Logger.Error("Unknown item bought: " + item.Price.Id);
                         }
+                        
+                        itemIds.Add(product!.Id);
                     });
                     if (liveMode || fulfillOrderForNonAdmins || user.IsAdmin()) {
-                        user.RegisterChanges();
+                        Program.StorageService.AddOwnedProducts(user.Id, itemIds.ToArray());
                     }
                     else {
                         Logger.Debug("Not fulfilling order because we are not in live mode and user is not admin");

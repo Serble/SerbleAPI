@@ -15,10 +15,6 @@ public class User {
     /// </summary>
     public int PermLevel { get; set; }
     public string PermString { get; set; }
-    /// <summary>
-    /// 0=None 10=Premium
-    /// </summary>
-    public int PremiumLevel { get; set; }
     public string? StripeCustomerId { get; set; }
     public string? Language { get; set; }
     
@@ -47,7 +43,6 @@ public class User {
         Email = "";
         PasswordHash = "";
         PermLevel = 0;
-        PremiumLevel = 0;
         PermString = "";
         Language = "en";
         VerifiedEmail = false;
@@ -124,6 +119,5 @@ public class User {
     }
 
     public bool IsAdmin() => PermLevel == 2;
-    public bool IsPremium() => PremiumLevel == 10;
 
     }

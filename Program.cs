@@ -3,6 +3,7 @@ using GeneralPurposeLib;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Raw;
 using SerbleAPI.Data.Storage;
+using SerbleAPI.Data.Storage.MySQL;
 using Stripe;
 using File = System.IO.File;
 using LogLevel = GeneralPurposeLib.LogLevel;
@@ -128,6 +129,8 @@ public static class Program {
         Testing = Config["testing"] == "true";
         StripeConfiguration.ApiKey = Testing ? Config["stripe_test_key"] : Config["stripe_key"];
         Logger.Info("Config loaded.");
+        
+        ProductManager.Load();
         
         // Loglevel
         switch (Config["logging_level"]) {

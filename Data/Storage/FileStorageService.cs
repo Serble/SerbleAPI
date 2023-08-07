@@ -18,12 +18,14 @@ public class FileStorageService : IStorageService {
     // (userid, appid, scopes)
     private List<(string, AuthorizedApp)> _authorizations = new();
     private Dictionary<string, string> _kv = new();
+    private List<(string, string)> _ownedProducts = new();  // (userid, productid)
 
     public void Init() {
         _users = new List<User>();
         _apps = new List<OAuthApp>();
         _authorizations = new List<(string, AuthorizedApp)>();
         _kv = new Dictionary<string, string>();
+        _ownedProducts = new List<(string, string)>();
         
         // Add dummy data
         _users.Add(new User {
@@ -41,12 +43,13 @@ public class FileStorageService : IStorageService {
         Logger.Info("Loading data from data.json...");
         if (File.Exists("data.json")) {
             string jsonData = File.ReadAllText("data.json");
-            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>) data = 
-                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>)>(jsonData);
+            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>) data = 
+                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>)>(jsonData);
             _users = data.Item1;
             _apps = data.Item2;
             _authorizations = data.Item3;
-            _kv = data.Item4 ?? new Dictionary<string, string>();
+            _kv = data.Item4;
+            _ownedProducts = data.Item5;
             Logger.Info("Loaded data from data.json");
         } else {
             Logger.Info("No data.json found, creating new data.json");
@@ -181,5 +184,17 @@ public class FileStorageService : IStorageService {
 
     public void BasicKvGet(string key, out string? value) {
         value = _kv.TryGetValue(key, out string? v) ? v : null;
+    }
+
+    public void GetOwnedProducts(string userId, out string[] products) {
+        products = _ownedProducts.Where(p => p.Item1 == userId).Select(p => p.Item2).ToArray();
+    }
+
+    public void AddOwnedProducts(string userId, string[] productId) {
+        _ownedProducts.AddRange(productId.Select(p => (userId, p)));
+    }
+
+    public void RemoveOwnedProduct(string userId, string productId) {
+        _ownedProducts.RemoveAll(p => p.Item1 == userId && p.Item2 == productId);
     }
 }

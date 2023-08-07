@@ -1,79 +1,81 @@
+using System.Text.Json;
+using GeneralPurposeLib;
+using Newtonsoft.Json;
 using SerbleAPI.Data.Schemas;
-using Stripe;
+using File = System.IO.File;
 
 namespace SerbleAPI.Data; 
 
 public static class ProductManager {
 
-    public static SerbleProduct GetProductFromPriceId(string priceId) {
-        if (priceId == Program.Config!["stripe_premium_sub_id"] || priceId == Program.Config["stripe_testing_premium_sub_id"]) {
-            return SerbleProduct.Premium;
+    private static SerbleProduct[] _products = null!;
+
+    public static void Load() {
+        if (!File.Exists("products.json")) {
+            Logger.Info("products.json does not exist, creating it");
+            SerbleProduct[] examples = {
+                new() {
+                    Name = "Premium",
+                    Description = "Premium features for Serble",
+                    Id = "premium",
+                    PriceIds = new[] {
+                        "price_xxxxxxxxxxxxxxxxxxxxxxxx"
+                    },
+                    PriceLookupIds = new Dictionary<string, string> {
+                        { "monthly", "premium_monthly" }
+                    },
+                    Purchasable = true
+                }
+            };
+            string write = JsonConvert.SerializeObject(examples, Formatting.Indented);
+            File.WriteAllText("products.json", write);
         }
-        else {
-            return SerbleProduct.Unknown;
-        }
+        string json = File.ReadAllText("products.json");
+        _products = JsonConvert.DeserializeObject<SerbleProduct[]>(json)!;
+        Logger.Info($"Loaded {_products.Length} products");
     }
 
-    public static string GetLookupId(this SerbleProduct product) {
-        return product switch {
-            SerbleProduct.Premium => (Program.Testing ? "test_" : "") + "serble_premium_price",
-            SerbleProduct.Unknown => "unknown",
-            _ => "unknown"
-        };
+    public static SerbleProduct? GetProductFromPriceId(string priceId) {
+        return _products.FirstOrDefault(product => product.PriceIds.Contains(priceId));
     }
     
-    public static string GetPriceId(this SerbleProduct product) {
-        return product switch {
-            SerbleProduct.Premium => Program.Config!["stripe_premium_sub_id"],
-            SerbleProduct.Unknown => "unknown",
-            _ => "unknown"
-        };
+    public static SerbleProduct? GetProductFromId(string id) {
+        return _products.FirstOrDefault(product => product.Id == id);
     }
     
-    public static string GetId(this SerbleProduct product) {
-        return product switch {
-            SerbleProduct.Premium => "premium",
-            SerbleProduct.Unknown => "unknown",
-            _ => "unknown"
-        };
-    }
-    
-    public static SerbleProduct GetProductFromId(string id) {
-        return id switch {
-            "premium" => SerbleProduct.Premium,
-            _ => SerbleProduct.Unknown
-        };
-    }
-    
-    public static SerbleProduct[] GetProductsFromIds(string[] ids) {
+    public static SerbleProduct?[] GetProductsFromIds(IEnumerable<string> ids) {
         return ids.Select(GetProductFromId).ToArray();
     }
     
-    public static string[] ToLookupIdArray(this IEnumerable<SerbleProduct> products) {
-        return products.Select(product => product.GetLookupId()).ToArray();
-    }
-    
     public static SerbleProduct[] ListOfProductsFromUser(User target) {
-        if (string.IsNullOrWhiteSpace(target.StripeCustomerId)) {
-            return Array.Empty<SerbleProduct>();
+        Program.StorageService!.GetOwnedProducts(target.Id, out string[] products);
+        return GetProductsFromIds(products).Where(product => product != null).Select(product => product!).ToArray();
+    }
+
+    public static string[] CheckoutBodyToLookupIds(string body) {
+        JsonDocument doc = JsonDocument.Parse(body);
+        JsonElement root = doc.RootElement;
+        List<string> ids = new();
+        foreach (JsonElement prod in root.EnumerateArray()) {
+            if (prod.ValueKind == JsonValueKind.String) {
+                // Old format
+                ids.Add(prod.GetString()!);
+                continue;
+            }
+            
+            string itemId = prod.GetProperty("id").GetString()!;
+            
+            SerbleProduct? product = GetProductFromId(itemId);
+            if (product == null) {
+                throw new KeyNotFoundException(itemId);
+            }
+            
+            // Optional priceid
+            string priceId = (prod.TryGetProperty("priceid", out JsonElement priceIdElement) ? priceIdElement.GetString() : null) ??
+                              product.PriceLookupIds.First().Value;
+            ids.Add(product.PriceLookupIds[priceId]);
         }
-        
-        CustomerService customerService = new();
-        
-        Customer customer;
-        try {
-            customer = customerService.Get(target.StripeCustomerId);
-        }
-        catch (StripeException) {
-            return Array.Empty<SerbleProduct>();
-        }
-        List<Product> products = (from subscription in customer.Subscriptions.Data where subscription.Status == "active" select subscription.Items.Data[0].Price.Product).ToList();
-        return products.Select(product => GetProductFromPriceId(product.DefaultPriceId)).ToArray();
+        return ids.ToArray();
     }
     
-}
-
-public enum SerbleProduct {
-    Premium,
-    Unknown
 }

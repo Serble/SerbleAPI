@@ -26,4 +26,8 @@ public interface IStorageService {
     
     public void BasicKvSet(string key, string value);
     public void BasicKvGet(string key, out string? value);
+    
+    public void GetOwnedProducts(string userId, out string[] products);
+    public void AddOwnedProducts(string userId, string[] productIds);
+    public void RemoveOwnedProduct(string userId, string productId);
 }

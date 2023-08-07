@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace SerbleAPI.API.v1; 
+namespace SerbleAPI.API.v1.People; 
 
 [ApiController]
 [Route("api/v1/dan/")]

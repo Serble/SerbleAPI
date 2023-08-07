@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace SerbleAPI.API.v1; 
+namespace SerbleAPI.API.v1.Services; 
 
 [ApiController]
 [Route("api/v1/checkuser")]
