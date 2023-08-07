@@ -167,7 +167,8 @@ public class StripeWebhookController : ControllerManager {
 
             return Ok();
         }
-        catch (StripeException) {
+        catch (StripeException e) {
+            Logger.Debug("Stripe exception: " + e.Message);
             return BadRequest();
         }
         catch (Exception e) {
