@@ -58,7 +58,11 @@ public static class ProductManager {
         foreach (JsonElement prod in root.EnumerateArray()) {
             if (prod.ValueKind == JsonValueKind.String) {
                 // Old format
-                ids.Add(prod.GetString()!);
+                SerbleProduct? productOld = GetProductFromId(prod.GetString()!);
+                if (productOld == null) {
+                    continue;
+                }
+                ids.Add(productOld.PriceLookupIds.First().Value);
                 continue;
             }
             
