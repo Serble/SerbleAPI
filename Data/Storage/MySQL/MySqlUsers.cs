@@ -67,7 +67,6 @@ public partial class MySqlStorageService {
                                                     "password=@password, " +
                                                     "permlevel=@permlevel, " +
                                                     "permstring=@permstring, " +
-                                                    "premiumLevel=@premiumLevel, " +
                                                     "subscriptionId=@subscriptionId," +
                                                     "language=@language " +
                                                     "WHERE id=@id",
