@@ -13,7 +13,7 @@ namespace SerbleAPI.API.v1.Payments;
 public class CreateCheckoutController : ControllerManager {
     
     [HttpPost("checkout")]
-    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] string body) {
+    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] JsonDocument body) {
         if (!authorization.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string _, out User? target)) {
             return Unauthorized();
         }

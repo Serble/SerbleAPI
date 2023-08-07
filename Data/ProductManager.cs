@@ -52,8 +52,7 @@ public static class ProductManager {
         return GetProductsFromIds(products).Where(product => product != null).Select(product => product!).ToArray();
     }
 
-    public static string[] CheckoutBodyToLookupIds(string body) {
-        JsonDocument doc = JsonDocument.Parse(body);
+    public static string[] CheckoutBodyToLookupIds(JsonDocument doc) {
         JsonElement root = doc.RootElement;
         List<string> ids = new();
         foreach (JsonElement prod in root.EnumerateArray()) {
