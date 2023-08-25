@@ -43,7 +43,7 @@ public partial class MySqlStorageService : IStorageService {
                            "name VARCHAR(64), " +
                            "description VARCHAR(1024), " +
                            "clientsecret VARCHAR(64), " + 
-                           "redirecturi VARCHAR(64))");
+                           "redirecturi TEXT)");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_kv(" +
                             "k VARCHAR(64)," +
                             "v VARCHAR(1024))");
