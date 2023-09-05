@@ -95,6 +95,33 @@ public class AppController : ControllerManager {
         Program.StorageService!.AddOAuthApp(new OAuthApp(target.Id) {Description = app.Description, Name = app.Name, RedirectUri = app.RedirectUri});
         return Ok();
     }
+    
+    [HttpPatch("{appid}")]
+    public ActionResult<OAuthApp> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AppEditRequest[] edits, [FromQuery] string appid) {
+        if (!authorizationHeader.Check(out string scope, out SerbleAuthorizationHeaderType? _, out string? msg, out User user)) {
+            return Unauthorized();
+        }
+
+        if (!scope.SerbleHasScope(ScopeHandler.ScopesEnum.AppsControl)) {
+            return Forbid("Scope AppsControl is required.");
+        }
+        
+        Program.StorageService!.GetOAuthApp(appid, out OAuthApp? target);
+        if (target == null) {
+            return NotFound();
+        }
+        
+        OAuthApp newApp = target;
+        foreach (AppEditRequest editRequest in edits) {
+            if (!editRequest.TryApplyChanges(newApp, out OAuthApp modApp, out string applyErrorMsg)) {
+                return BadRequest(applyErrorMsg);
+            }
+            newApp = modApp;
+        }
+        
+        Program.StorageService.UpdateOAuthApp(newApp);
+        return newApp;
+    }
 
     [HttpOptions("{appid}/public")]
     public ActionResult OptionsPublic() {
@@ -104,7 +131,7 @@ public class AppController : ControllerManager {
     
     [HttpOptions("{appid}")]
     public ActionResult OptionsAppId() {
-        HttpContext.Response.Headers.Add("Allow", "GET, DELETE, OPTIONS");
+        HttpContext.Response.Headers.Add("Allow", "GET, DELETE, PATCH, OPTIONS");
         return Ok();
     }
     
