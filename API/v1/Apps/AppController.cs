@@ -97,7 +97,7 @@ public class AppController : ControllerManager {
     }
     
     [HttpPatch("{appid}")]
-    public ActionResult<OAuthApp> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AppEditRequest[] edits, [FromQuery] string appid) {
+    public ActionResult<OAuthApp> EditApp([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AppEditRequest[] edits, string appid) {
         if (!authorizationHeader.Check(out string scope, out SerbleAuthorizationHeaderType? _, out string? msg, out User user)) {
             return Unauthorized();
         }
