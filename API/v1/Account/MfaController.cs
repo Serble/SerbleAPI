@@ -11,6 +11,9 @@ public class MfaController : ControllerManager {
 
     [HttpPost]
     public IActionResult Authenticate([FromBody] MfaAuthBody body) {
+        if (body.LoginToken == null) {
+            return Unauthorized("Login token is missing");
+        }
         if (!TokenHandler.ValidateFirstStepLoginToken(body.LoginToken, out User user)) {
             return Unauthorized("Invalid login token");
         }
