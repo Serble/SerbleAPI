@@ -41,7 +41,7 @@ public class AccountController : ControllerManager {
 
     [HttpPost]
     public async Task<ActionResult<SanitisedUser>> Register([FromBody] RegisterRequestBody requestBody, [FromHeader] AntiSpamProtection antiSpam) {
-        if (!await antiSpam.Check()) {
+        if (!await antiSpam.Check(HttpContext)) {
             return BadRequest("Anti-spam check failed");
         }
         if (requestBody.Password.Length > 256) {
@@ -52,9 +52,11 @@ public class AccountController : ControllerManager {
         if (existingUser != null) {
             return Conflict("User already exists");
         }
+        string passwordSalt = SerbleUtils.RandomString(64);
         User newUser = new() {
             Username = requestBody.Username,
-            PasswordHash = requestBody.Password.Sha256Hash(),
+            PasswordHash = (requestBody.Password + passwordSalt).Sha256Hash(),
+            PasswordSalt = passwordSalt,
             PermLevel = 1,
             PermString = "0"
         };

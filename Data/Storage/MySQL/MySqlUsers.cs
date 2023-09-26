@@ -9,8 +9,8 @@ public partial class MySqlStorageService {
         userDetails.Id = Guid.NewGuid().ToString();
         MySqlHelper.ExecuteNonQuery(_connectString!, 
             "INSERT INTO serblesite_users(" +
-            "id, username, email, verifiedEmail, password, permlevel, permstring, subscriptionId, language) " +
-            "VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @subscriptionId, @language)",
+            "id, username, email, verifiedEmail, password, permlevel, permstring, subscriptionId, language, totp_enabled, totp_secret, password_salt) " +
+            "VALUES(@id, @username, @email, @verifiedEmail, @password, @permlevel, @permstring, @subscriptionId, @language, @topt_enabled, @topt_secret, @password_salt)",
             new MySqlParameter("@id", userDetails.Id),
             new MySqlParameter("@username", userDetails.Username),
             new MySqlParameter("@email", userDetails.Email),
@@ -19,7 +19,10 @@ public partial class MySqlStorageService {
             new MySqlParameter("@permlevel", userDetails.PermLevel),
             new MySqlParameter("@permstring", userDetails.PermString),
             new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId),
-            new MySqlParameter("@language", userDetails.Language));
+            new MySqlParameter("@language", userDetails.Language),
+            new MySqlParameter("@topt_enabled", userDetails.TotpEnabled),
+            new MySqlParameter("@topt_secret", userDetails.TotpSecret),
+            new MySqlParameter("@password_salt", userDetails.PasswordSalt));
         newUser = userDetails;
     }
 
@@ -41,7 +44,10 @@ public partial class MySqlStorageService {
             PermLevel = reader.GetInt32("permlevel"),
             PermString = reader.GetString("permstring"),
             StripeCustomerId = subId,
-            Language = language
+            Language = language,
+            TotpEnabled = reader.GetBoolean("totp_enabled"),
+            TotpSecret = reader.IsDBNull("totp_secret") ? null : reader.GetString("totp_secret"),
+            PasswordSalt = reader.IsDBNull("password_salt") ? null : reader.GetString("password_salt")
         };
 
         reader.Close();
@@ -68,7 +74,10 @@ public partial class MySqlStorageService {
                                                     "permlevel=@permlevel, " +
                                                     "permstring=@permstring, " +
                                                     "subscriptionId=@subscriptionId," +
-                                                    "language=@language " +
+                                                    "language=@language, " +
+                                                    "totp_enabled=@totp_enabled, " +
+                                                    "totp_secret=@totp_secret, " +
+                                                    "password_salt=@password_salt " +
                                                     "WHERE id=@id",
             new MySqlParameter("@username", userDetails.Username),
             new MySqlParameter("@email", userDetails.Email),
@@ -78,7 +87,10 @@ public partial class MySqlStorageService {
             new MySqlParameter("@permstring", userDetails.PermString),
             new MySqlParameter("@subscriptionId", userDetails.StripeCustomerId),
             new MySqlParameter("@id", userDetails.Id),
-            new MySqlParameter("@language", userDetails.Language));
+            new MySqlParameter("@language", userDetails.Language),
+            new MySqlParameter("@totp_enabled", userDetails.TotpEnabled),
+            new MySqlParameter("@totp_secret", userDetails.TotpSecret),
+            new MySqlParameter("@password_salt", userDetails.PasswordSalt));
     }
 
     public void DeleteUser(string userId) {

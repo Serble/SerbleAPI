@@ -220,6 +220,42 @@ public static class TokenHandler {
             return false;
         }
     }
+    
+    // First Step Login Token (To confirm user logged in and is awaiting MFA verification)
+    // Claims:
+    // - userid
+    public static string GenerateFirstStepLoginToken(string userId) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "type", "first-step-login" }
+        };
+        return GenerateToken(claims);
+    }
+    
+    public static bool ValidateFirstStepLoginToken(string token, out User user) {
+        user = null!;
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                Logger.Debug(validationFailMsg);
+                return false;
+            }
+            claims.ThrowIfNull();
+            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type")) {
+                return false;
+            }
+            if (claims["type"] != "first-step-login") {
+                return false;
+            }
+            Program.StorageService!.GetUser(claims["userid"], out User? gottenUser);
+            gottenUser.ThrowIfNull();
+            user = gottenUser!;
+            return true;
+        }
+        catch (Exception e) {
+            Logger.Debug("Token validation failed: " + e);
+            return false;
+        }
+    }
 
 
     private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600) {

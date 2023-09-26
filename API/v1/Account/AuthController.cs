@@ -32,10 +32,24 @@ public class AuthController : ControllerManager {
         if (!user.CheckPassword(password)) {
             return Unauthorized();
         }
+
+        if (user.TotpEnabled) {
+            // 2FA is enabled, return a first stage login token
+            string mfaToken = TokenHandler.GenerateFirstStepLoginToken(user.Id);
+            return Ok(new {
+                mfa_token = mfaToken,
+                success = true,
+                mfa_required = true
+            });
+        }
         
         // Valid credentials, return token
         string token = TokenHandler.GenerateLoginToken(user.Id);
-        return Ok(token);
+        return Ok(new {
+            token,
+            success = true,
+            mfa_required = false
+        });
     }
     
     [HttpOptions]

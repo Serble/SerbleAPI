@@ -12,7 +12,7 @@ public class AntiSpamProtection {
     // Or be logged in with a verified email
     public string SerbleAntiSpam { get; set; } = null!;
 
-    public async Task<bool> Check(SerbleAuthorizationHeaderType authType = SerbleAuthorizationHeaderType.Null, User? user = null) {
+    public async Task<bool> Check(HttpContext context, SerbleAuthorizationHeaderType authType = SerbleAuthorizationHeaderType.Null, User? user = null) {
         
         // If the user is logged in with a verified email address, then they are automatically verified
         if (user != null && authType == SerbleAuthorizationHeaderType.User && user.VerifiedEmail) {

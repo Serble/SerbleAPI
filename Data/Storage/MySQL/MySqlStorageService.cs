@@ -32,7 +32,10 @@ public partial class MySqlStorageService : IStorageService {
                            permstring VARCHAR(64),
                            premiumLevel INT,
                            subscriptionId VARCHAR(32),
-                           language VARCHAR(8))");
+                           language VARCHAR(8),
+                           totp_enabled BOOLEAN,
+                           totp_secret VARCHAR(128),
+                           password_salt VARCHAR(64))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_authorized_apps(
                            userid VARCHAR(64),
                            appid VARCHAR(64),

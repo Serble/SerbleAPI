@@ -1,4 +1,7 @@
+using System.Text;
 using GeneralPurposeLib;
+using OtpNet;
+using QRCoder;
 using Stripe;
 
 namespace SerbleAPI.Data.Schemas; 
@@ -9,6 +12,9 @@ public class User {
     public string Username { get; set; }
     public string Email { get; set; }
     public bool VerifiedEmail { get; set; }
+    /// <summary>
+    /// Password + Salt, unless they registered before this was added then (salt is null): Password
+    /// </summary>
     public string PasswordHash { get; set; }
     /// <summary>
     /// 0=Disabled Account 1=Normal, 2=Admin
@@ -17,6 +23,9 @@ public class User {
     public string PermString { get; set; }
     public string? StripeCustomerId { get; set; }
     public string? Language { get; set; }
+    public bool TotpEnabled { get; set; }
+    public string? TotpSecret { get; set; }  // 128 bytes
+    public string? PasswordSalt { get; set; }  // 64 bytes, null for people who registered before this was added
     
     public AuthorizedApp[] AuthorizedApps {
         get {
@@ -46,12 +55,13 @@ public class User {
         PermString = "";
         Language = "en";
         VerifiedEmail = false;
+        TotpEnabled = false;
         _originalAuthedApps = Array.Empty<AuthorizedApp>();
         StripeCustomerId = null;
     }
     
     public bool CheckPassword(string password) {
-        return PasswordHash == Utils.ToSHA256(password);
+        return PasswordHash == Utils.ToSHA256(password + (PasswordSalt ?? ""));
     }
     
     public void ObtainAuthorizedApps() {
@@ -117,7 +127,31 @@ public class User {
 
         Logger.Debug("Added/Removed authed apps: " + addedApps.Length + "/" + removedApps.Length);
     }
+    
+    public bool ValidateTotp(string code) {
+        if (!TotpEnabled) return false;
+        if (TotpSecret == null) return false;
+        
+        byte[] secretBytes = Encoding.UTF8.GetBytes(TotpSecret);
+        Totp totp = new(secretBytes);
+        return totp.VerifyTotp(code, out _);
+    }
+
+    public byte[]? GetTotpQrCode() {
+        if (!TotpEnabled) {
+            return null;
+        }
+        string uriString = GetTotpUri();
+        QRCodeGenerator qrGenerator = new();
+        QRCodeData qrCodeData = qrGenerator.CreateQrCode(uriString, QRCodeGenerator.ECCLevel.Q);
+        BitmapByteQRCode qrCode = new(qrCodeData);
+        return qrCode.GetGraphic(20);
+    }
+
+    public string GetTotpUri() {
+        return new OtpUri(OtpType.Totp, Encoding.UTF8.GetBytes(TotpSecret!), Username, "Serble").ToString()!;
+    }
 
     public bool IsAdmin() => PermLevel == 2;
 
-    }
+}

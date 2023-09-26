@@ -13,7 +13,7 @@ public class AccountEditRequest {
         NewValue = newValue;
     }
 
-    public User ApplyChanges(User target) {
+    private User ApplyChanges(User target) {
         switch (Field.ToLower()) {
             case "username":
                 // Check if username is taken
@@ -31,7 +31,9 @@ public class AccountEditRequest {
                 if (NewValue.Length > 256) {
                     throw new ArgumentException("Password cannot be longer than 256 characters");
                 }
-                target.PasswordHash = NewValue.Sha256Hash();
+
+                target.PasswordSalt ??= SerbleUtils.RandomString(64);
+                target.PasswordHash = (NewValue + target.PasswordSalt).Sha256Hash();
                 break;
             
             case "email":
@@ -47,6 +49,21 @@ public class AccountEditRequest {
                     throw new ArgumentException("Invalid language");
                 }
                 target.Language = NewValue;
+                break;
+            
+            case "totpenabled":
+                switch (NewValue.ToLower()) {
+                    case "true":
+                        target.TotpEnabled = true;
+                        target.TotpSecret ??= SerbleUtils.RandomString(128);
+                        break;
+                    case "false":
+                        target.TotpEnabled = false;
+                        break;
+                    default:
+                        throw new ArgumentException("Invalid value for ToptEnabled");
+                }
+
                 break;
 
             default:

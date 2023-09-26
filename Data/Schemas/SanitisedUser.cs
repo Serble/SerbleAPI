@@ -14,6 +14,7 @@ public class SanitisedUser {
     public string? PermString { get; set; }
     public AuthorizedApp[]? AuthorizedApps { get; set; }
     public string? Language { get; set; }
+    public bool ToptEnabled { get; set; }
     
     [Obsolete("Stripe Customer ID is no longer provided to clients for security reasons.")]
     public string? StripeCustomerId { get; set; }
@@ -30,6 +31,10 @@ public class SanitisedUser {
             VerifiedEmail = user.VerifiedEmail;
             PermLevel = user.PermLevel;
             Language = user.Language;
+        }
+
+        if (scopes.Contains("manage_account") || hasFullAccess) {
+            ToptEnabled = user.TotpEnabled;
         }
 
         if ((scopes.Contains("apps_control") || hasFullAccess) && !ignoreAuthedApps) {
