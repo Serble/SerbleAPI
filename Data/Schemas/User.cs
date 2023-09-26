@@ -145,7 +145,7 @@ public class User {
         QRCodeGenerator qrGenerator = new();
         QRCodeData qrCodeData = qrGenerator.CreateQrCode(uriString, QRCodeGenerator.ECCLevel.Q);
         BitmapByteQRCode qrCode = new(qrCodeData);
-        return qrCode.GetGraphic(20);
+        return qrCode.GetGraphic(1);
     }
 
     public string GetTotpUri() {
