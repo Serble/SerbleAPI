@@ -44,4 +44,16 @@ public class MfaController : ControllerManager {
         return File(qrCode, "image/png");
     }
     
+    [HttpOptions]
+    public ActionResult Options() {
+        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
+        return Ok();
+    }
+    
+    [HttpOptions("totp/qrcode")]
+    public ActionResult OptionsTotpQrCode() {
+        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
+        return Ok();
+    }
+    
 }
