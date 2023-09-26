@@ -129,8 +129,10 @@ public class User {
     }
     
     public bool ValidateTotp(string code) {
-        if (!TotpEnabled) return false;
-        if (TotpSecret == null) return false;
+        if (TotpSecret == null) {
+            TotpSecret = SerbleUtils.RandomString(128);
+            RegisterChanges();
+        }
         
         byte[] secretBytes = Encoding.UTF8.GetBytes(TotpSecret);
         Totp totp = new(secretBytes);
@@ -138,8 +140,9 @@ public class User {
     }
 
     public byte[]? GetTotpQrCode() {
-        if (!TotpEnabled) {
-            return null;
+        if (TotpSecret == null) {
+            TotpSecret = SerbleUtils.RandomString(128);
+            RegisterChanges();
         }
         string uriString = GetTotpUri();
         QRCodeGenerator qrGenerator = new();
