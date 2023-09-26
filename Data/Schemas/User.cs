@@ -134,7 +134,7 @@ public class User {
         
         byte[] secretBytes = Encoding.UTF8.GetBytes(TotpSecret);
         Totp totp = new(secretBytes);
-        return totp.VerifyTotp(code, out _);
+        return totp.VerifyTotp(code, out _, new VerificationWindow(1, 1));
     }
 
     public byte[]? GetTotpQrCode() {

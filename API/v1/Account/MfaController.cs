@@ -28,6 +28,27 @@ public class MfaController : ControllerManager {
         });
     }
     
+    [HttpPost]
+    [Route("totp")]
+    public IActionResult CheckTotp([FromHeader] SerbleAuthorizationHeader auth, [FromBody] MfaAuthBody body) {
+        if (!auth.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.ManageAccount)) {
+            return Unauthorized();
+        }
+        
+        // Valid token, check TOTP code
+        if (!user.ValidateTotp(body.TotpCode)) {
+            return Ok(new {
+                success = true,
+                valid = false
+            });
+        }
+        
+        return Ok(new {
+            success = true,
+            valid = true
+        });
+    }
+    
     [HttpGet("totp/qrcode")]
     public IActionResult GetTotpQrCode([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
         if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? authType, out string? msg,
@@ -53,6 +74,12 @@ public class MfaController : ControllerManager {
     [HttpOptions("totp/qrcode")]
     public ActionResult OptionsTotpQrCode() {
         HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
+        return Ok();
+    }
+    
+    [HttpOptions("totp")]
+    public ActionResult OptionsCheckTotp() {
+        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
         return Ok();
     }
     
