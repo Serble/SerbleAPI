@@ -9,15 +9,15 @@ namespace SerbleAPI.API.v1.Account;
 public class EmailConfirmationController : ControllerManager {
 
     [HttpGet]
-    public ActionResult Confirm([FromQuery] string token) {
+    public ActionResult Confirm([FromQuery] string token, [FromQuery] string? redirect = null, [FromQuery] string? failureRedirect = null) {
         if (!TokenHandler.ValidateEmailConfirmationToken(token, out User? user, out string email) || user.Email != email || user.VerifiedEmail) {
-            return Redirect($"{Program.Config!["website_url"]}/emailconfirm/error");
+            return Redirect(redirect ?? $"{Program.Config!["website_url"]}/emailconfirm/error");
         }
         
         user.VerifiedEmail = true;
         user.RegisterChanges();
         
-        return Redirect($"{Program.Config!["website_url"]}/emailconfirm/success"); 
+        return Redirect(failureRedirect ?? $"{Program.Config!["website_url"]}/emailconfirm/success"); 
     }
     
 }

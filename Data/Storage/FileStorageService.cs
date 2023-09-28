@@ -19,6 +19,7 @@ public class FileStorageService : IStorageService {
     private List<(string, AuthorizedApp)> _authorizations = new();
     private Dictionary<string, string> _kv = new();
     private List<(string, string)> _ownedProducts = new();  // (userid, productid)
+    private List<(string, string, string)> _userNotes = new();  // (userid, noteid, note)
 
     public void Init() {
         _users = new List<User>();
@@ -26,6 +27,7 @@ public class FileStorageService : IStorageService {
         _authorizations = new List<(string, AuthorizedApp)>();
         _kv = new Dictionary<string, string>();
         _ownedProducts = new List<(string, string)>();
+        _userNotes = new List<(string, string, string)>();
         
         // Add dummy data
         _users.Add(new User {
@@ -43,13 +45,14 @@ public class FileStorageService : IStorageService {
         Logger.Info("Loading data from data.json...");
         if (File.Exists("data.json")) {
             string jsonData = File.ReadAllText("data.json");
-            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>) data = 
-                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>)>(jsonData);
+            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>) data = 
+                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>)>(jsonData);
             _users = data.Item1;
             _apps = data.Item2;
             _authorizations = data.Item3;
             _kv = data.Item4;
             _ownedProducts = data.Item5;
+            _userNotes = data.Item6;
             Logger.Info("Loaded data from data.json");
         } else {
             Logger.Info("No data.json found, creating new data.json");
@@ -67,7 +70,7 @@ public class FileStorageService : IStorageService {
             string errorText = "Unspecified error";
             Logger.Info("Saving data to data.json...");
             try {
-                File.WriteAllText("data.json", JsonConvert.SerializeObject((_users, _apps, _authorizations, _kv)));
+                File.WriteAllText("data.json", JsonConvert.SerializeObject((_users, _apps, _authorizations, _kv, _ownedProducts, _userNotes)));
                 Logger.Info("Saved data to data.json");
             }
             catch (JsonException e) {
@@ -196,5 +199,27 @@ public class FileStorageService : IStorageService {
 
     public void RemoveOwnedProduct(string userId, string productId) {
         _ownedProducts.RemoveAll(p => p.Item1 == userId && p.Item2 == productId);
+    }
+
+    public void GetUserNotes(string userId, out string[] noteIds) {
+        noteIds = _userNotes.Where(n => n.Item1 == userId).Select(n => n.Item2).ToArray();
+    }
+
+    public void CreateUserNote(string userId, string noteId, string note) {
+        _userNotes.Add((userId, noteId, note));
+    }
+
+    public void UpdateUserNoteContent(string userId, string noteId, string note) {
+        _userNotes.RemoveAll(n => n.Item1 == userId && n.Item2 == noteId);
+        _userNotes.Add((userId, noteId, note));
+    }
+
+    public void GetUserNoteContent(string userId, string noteId, out string? content) {
+        (string, string, string)? r = _userNotes.FirstOrDefault(n => n.Item1 == userId && n.Item2 == noteId);
+        content = r?.Item3;
+    }
+
+    public void DeleteUserNote(string userId, string noteId) {
+        _userNotes.RemoveAll(n => n.Item1 == userId && n.Item2 == noteId);
     }
 }

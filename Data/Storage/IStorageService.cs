@@ -30,4 +30,10 @@ public interface IStorageService {
     public void GetOwnedProducts(string userId, out string[] products);
     public void AddOwnedProducts(string userId, string[] productIds);
     public void RemoveOwnedProduct(string userId, string productId);
+    
+    public void GetUserNotes(string userId, out string[] noteIds);
+    public void CreateUserNote(string userId, string noteId, string note);
+    public void UpdateUserNoteContent(string userId, string noteId, string note);
+    public void GetUserNoteContent(string userId, string noteId, out string? content);
+    public void DeleteUserNote(string userId, string noteId);
 }

@@ -54,6 +54,11 @@ public partial class MySqlStorageService : IStorageService {
                            "user VARCHAR(64), " +
                            "product VARCHAR(64), " +
                            "FOREIGN KEY (user) REFERENCES serblesite_users(id))");
+        SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_notes(" +
+                           "user VARCHAR(64), " +
+                           "noteid VARCHAR(64), " +
+                           "note TEXT, " +
+                           "FOREIGN KEY (user) REFERENCES serblesite_users(id))");
     }
 
     private void SendMySqlStatement(string statement) {

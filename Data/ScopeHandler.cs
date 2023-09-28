@@ -15,7 +15,8 @@ public static class ScopeHandler {
         "apps_control",
         "payment_info",
         "manage_account",
-        "manage_apps"
+        "manage_apps",
+        "vault"
     };
     
     public static readonly string[] ScopeNames = {
@@ -25,7 +26,8 @@ public static class ScopeHandler {
         "Control Of Authorized Applications",
         "Payment Information",
         "Account Management",
-        "OAuth App Management"
+        "OAuth App Management",
+        "Vault Access"
     };
     
     public enum ScopesEnum {
@@ -35,7 +37,8 @@ public static class ScopeHandler {
         AppsControl,
         PaymentInfo,
         ManageAccount,
-        ManageApps
+        ManageApps,
+        Vault
     }
 
     // id, name
@@ -49,7 +52,8 @@ public static class ScopeHandler {
         "Allows access to a user's list of purchased products and allows them to manage their subscriptions, " +
         "including viewing the last 4 digits of their credit card and viewing purchase history.",
         "Grants the ability to control the user's account, including changing their email, and username. Only you can change your password.",
-        "Allows management over all of your OAuth application, this does not allow the authorization of apps."
+        "Allows management over all of your OAuth application, this does not allow the authorization of apps.",
+        "Allows access to the user's vault, including read and write access."
     };
 
     public static string ListOfScopeIdsToString(IEnumerable<string> scopeIds) {
