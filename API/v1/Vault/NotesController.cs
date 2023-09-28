@@ -45,6 +45,7 @@ public class NotesController : ControllerManager {
     }
     
     [HttpPut("{noteId}")]
+    [RequestSizeLimit(16_000_000)]
     public ActionResult UpdateNoteContent([FromHeader] SerbleAuthorizationHeader authorizationHeader, string noteId, [FromBody] string body) {
         if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
             return Unauthorized();
