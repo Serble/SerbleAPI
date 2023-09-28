@@ -64,4 +64,16 @@ public class NotesController : ControllerManager {
         return Ok();
     }
     
+    [HttpOptions]
+    public ActionResult Options() {
+        HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
+        return Ok();
+    }
+    
+    [HttpOptions("{noteId}")]
+    public ActionResult OptionsNoteId() {
+        HttpContext.Response.Headers.Add("Allow", "GET, PUT, DELETE, OPTIONS");
+        return Ok();
+    }
+    
 }
