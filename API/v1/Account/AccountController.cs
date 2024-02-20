@@ -109,6 +109,18 @@ public class AccountController : ControllerManager {
         return Task.FromResult<ActionResult<SanitisedUser>>(new SanitisedUser(target, scopes));
     }
 
+    [HttpPost("requestinfo")]
+    public async Task<ActionResult> RequestAccountData([FromHeader] SerbleAuthorizationHeader auth) {
+        if (!auth.CheckAndGetInfo(out User target, out _, ScopeHandler.ScopesEnum.FullAccess, false, Request)) {
+            return Unauthorized();
+        }
+        if (!target.VerifiedEmail) {
+            return BadRequest("You must verify your email before requesting your data");
+        }
+        AccountDataHandler.ScheduleUserDataCollation(target);
+        return Ok();
+    }
+    
     [HttpOptions]
     public ActionResult Options() {
         HttpContext.Response.Headers.Add("Allow", "GET, DELETE, POST, PATCH, OPTIONS");

@@ -11,19 +11,22 @@ public class Email {
     public string From { get; }
     public string Subject { get; set; }
     public string Body { get; set; }
+    public Attachment[] Attachments { get; set; }
 
-    public Email(IEnumerable<User> to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+    public Email(IEnumerable<User> to, FromAddress from = FromAddress.System, string subject = "", string body = "", params Attachment[] attachments) {
         To = to.Select(usr => usr.Email).ToArray();
         From = FromAddressEnumToString(from);
         Subject = subject;
         Body = body;
+        Attachments = attachments;
     }
 
-    public Email(string[] to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+    public Email(string[] to, FromAddress from = FromAddress.System, string subject = "", string body = "", params Attachment[] attachments) {
         To = to;
         From = FromAddressEnumToString(from);
         Subject = subject;
         Body = body;
+        Attachments = attachments;
     }
 
     private static string FromAddressEnumToString(FromAddress address) {
@@ -32,6 +35,10 @@ public class Email {
             FromAddress.Newsletter => Program.Config!["EmailAddress_Newsletter"],
             _ => throw new InvalidEmailException("Invalid FromAddress")
         };
+    }
+
+    public void AddAttachment(string file) {
+        Attachments = Attachments.Append(new Attachment(file)).ToArray();
     }
     
     public void SendNonBlocking() {
