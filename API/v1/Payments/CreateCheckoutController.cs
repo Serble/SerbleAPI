@@ -27,7 +27,7 @@ public class CreateCheckoutController : ControllerManager {
 
         string[] lookupKeys;
         try {
-            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body);
+            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out _);
         }
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
@@ -55,6 +55,55 @@ public class CreateCheckoutController : ControllerManager {
             CancelUrl = domain + "/store/cancel",
             ClientReferenceId = target.Id,
             Customer = target.StripeCustomerId
+        };
+
+        SessionService service = new();
+        Session session = service.Create(options);
+
+        Response.Headers.Add("Location", session.Url);
+        return new { url = session.Url };
+    }
+    
+    [HttpPost("checkoutanon")]
+    public ActionResult<dynamic> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
+        string domain = Program.Config!["website_url"];
+
+        string[] lookupKeys;
+        List<SerbleProduct> prods;
+        try {
+            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods);
+        }
+        catch (KeyNotFoundException e) {
+            return NotFound("Invalid product ID: " + e.Message);
+        }
+        PriceListOptions priceOptions = new() {
+            LookupKeys = lookupKeys.ToList()
+        };
+        PriceService priceService = new();
+        StripeList<Price> prices = priceService.List(priceOptions);
+
+        if (!prices.Any()) {
+            return BadRequest("No valid items were provided");
+        }
+        
+        string surl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}";
+        if (prods.Count == 1 && prods.Single().SuccessRedirect != null) {
+            // Generate a token for if it succeeds
+            string tok =
+                TokenHandler.GenerateCheckoutSuccessToken(prods.Single().Id, prods.Single().SuccessTokenSecret!);
+            surl = prods.Single().SuccessRedirect!.Replace("{token}", tok);
+        }
+
+        SessionCreateOptions options = new() {
+            LineItems = new List<SessionLineItemOptions> {
+                new() {
+                    Price = prices.Data[0].Id,
+                    Quantity = 1,
+                },
+            },
+            Mode = mode,
+            SuccessUrl = surl,
+            CancelUrl = domain + "/store/cancel"
         };
 
         SessionService service = new();

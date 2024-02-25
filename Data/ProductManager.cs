@@ -52,9 +52,10 @@ public static class ProductManager {
         return GetProductsFromIds(products).Where(product => product != null).Select(product => product!).ToArray();
     }
 
-    public static string[] CheckoutBodyToLookupIds(JsonDocument doc) {
+    public static string[] CheckoutBodyToLookupIds(JsonDocument doc, out List<SerbleProduct> products) {
         JsonElement root = doc.RootElement;
         List<string> ids = new();
+        products = new List<SerbleProduct>();
         foreach (JsonElement prod in root.EnumerateArray()) {
             if (prod.ValueKind == JsonValueKind.String) {
                 // Old format
@@ -63,6 +64,7 @@ public static class ProductManager {
                     continue;
                 }
                 ids.Add(productOld.PriceLookupIds.First().Value);
+                products.Add(productOld);
                 continue;
             }
             

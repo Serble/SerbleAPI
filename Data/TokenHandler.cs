@@ -256,10 +256,21 @@ public static class TokenHandler {
             return false;
         }
     }
+    
+    // Checkout Success Token (Given to other sites to confirm a successful checkout)
+    // Claims:
+    // - productid
+    public static string GenerateCheckoutSuccessToken(string productId, string secret) {
+        Dictionary<string, string> claims = new() {
+            { "type", "checkout_success" },
+            { "productid", productId }
+        };
+        return GenerateToken(claims, secret: secret);
+    }
 
 
-    private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600) {
-        string mySecret = Program.Config!["token_secret"];
+    private static string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600, string? secret = null) {
+        string mySecret = secret ?? Program.Config!["token_secret"];
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();
         SecurityTokenDescriptor tokenDescriptor = new() {

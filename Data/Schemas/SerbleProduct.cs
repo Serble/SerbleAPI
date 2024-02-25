@@ -7,4 +7,6 @@ public class SerbleProduct {
     public string[] PriceIds { get; set; } = null!;
     public Dictionary<string, string> PriceLookupIds { get; set; } = null!;
     public bool Purchasable { get; set; }
+    public string? SuccessRedirect { get; set; } = null;
+    public string? SuccessTokenSecret { get; set; } = null;
 }
