@@ -179,6 +179,12 @@ public class CreateCheckoutController : ControllerManager {
         return Ok();
     }
     
+    [HttpOptions("checkoutanon")]
+    public IActionResult OptionsCheckoutAnon() {
+        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
+        return Ok();
+    }
+    
     [HttpOptions("portal")]
     public IActionResult OptionsPortal() {
         HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
