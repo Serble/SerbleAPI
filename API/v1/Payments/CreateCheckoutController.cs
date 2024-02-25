@@ -13,7 +13,7 @@ namespace SerbleAPI.API.v1.Payments;
 public class CreateCheckoutController : ControllerManager {
     
     [HttpPost("checkout")]
-    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] JsonDocument body) {
+    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
         if (!authorization.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string _, out User? target)) {
             return Unauthorized();
         }
@@ -50,7 +50,7 @@ public class CreateCheckoutController : ControllerManager {
                     Quantity = 1,
                 },
             },
-            Mode = "subscription",
+            Mode = mode,
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
             ClientReferenceId = target.Id,
