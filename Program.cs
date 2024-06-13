@@ -1,4 +1,5 @@
 using System.Security;
+using Fido2NetLib;
 using GeneralPurposeLib;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Raw;
@@ -20,6 +21,8 @@ public static class Program {
         { "http_authorization_token", "my very secure auth token" },
         { "http_url", "https://myverysecurestoragebackend.io/" },
         { "my_host" , "https://theplacewherethisappisaccessable.com/" },
+        { "my_domain", "serble.net" },
+        { "fido_origins", "https://serble.net;https://www.serble.net;https://serble" },
         { "token_issuer", "CoPokBl" },
         { "token_audience", "Privileged Users" },
         { "token_secret" , Guid.NewGuid().ToString() },
@@ -46,7 +49,9 @@ public static class Program {
         { "stripe_testing_webhook_secret", "we_**************" },
         { "stripe_premium_sub_id", "SerblePremiumPriceID" },
         { "stripe_testing_premium_sub_id", "SerblePremiumPriceID" },
-        { "give_products_to_non_admins_while_testing", "false" }
+        { "give_products_to_non_admins_while_testing", "false" },
+        { "fido_mds_cache_dir", "./mdscache" },
+        { "server_icon", "https://serble.net/assets/images/icon.png" }
     };
     public static Dictionary<string, string>? Config;
     public static IStorageService? StorageService;
@@ -212,6 +217,18 @@ public static class Program {
             builder.Services.AddSwaggerGen();
             builder.Services.AddEndpointsApiExplorer();
             builder.WebHost.UseUrls(Config["bind_url"]);
+            
+            builder.Services.AddFido2(options => {
+                    options.ServerDomain = Config["my_domain"];
+                    options.ServerName = "FIDO2 Test";
+                    options.Origins = Config["fido_origins"].Split(';').ToHashSet();
+                    options.TimestampDriftTolerance = 1000 * 60 * 5;
+                    options.ServerIcon = Config["server_icon_url"];
+            }).AddCachedMetadataService(config => {
+                config.AddFidoMetadataRepository(_ => {
+                    
+                });
+            });
         }
         catch (Exception e) {
             Logger.Error(e);
