@@ -222,4 +222,20 @@ public class FileStorageService : IStorageService {
     public void DeleteUserNote(string userId, string noteId) {
         _userNotes.RemoveAll(n => n.Item1 == userId && n.Item2 == noteId);
     }
+
+    public void CreatePasskey(SavedPasskey key) {
+        throw new NotImplementedException();
+    }
+
+    public void GetUsersPasskeys(string userId, out SavedPasskey[] keys) {
+        throw new NotImplementedException();
+    }
+
+    public void IncrementPasskeySignCount(string userId, byte[] credId) {
+        throw new NotImplementedException();
+    }
+
+    public void GetUserIdFromCredentialId(byte[] credId, out string? userId) {
+        throw new NotImplementedException();
+    }
 }

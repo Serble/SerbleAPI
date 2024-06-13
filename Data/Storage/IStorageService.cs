@@ -40,4 +40,5 @@ public interface IStorageService {
     public void CreatePasskey(SavedPasskey key);
     public void GetUsersPasskeys(string userId, out SavedPasskey[] keys);
     public void IncrementPasskeySignCount(string userId, byte[] credId);
+    public void GetUserIdFromCredentialId(byte[] credId, out string? userId);
 }

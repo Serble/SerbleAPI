@@ -1,9 +1,19 @@
+using Fido2NetLib.Objects;
+
 namespace SerbleAPI.Data.Schemas;
 
-public class SavedPasskey(string ownerId, byte[] credentialId, byte[] publicKey, int signCount, byte[] aaGuid) {
-    public string OwnerId = ownerId;
-    public byte[] CredentialId = credentialId;
-    public byte[] PublicKey = publicKey;
-    public int SignCount = signCount;
-    public byte[] AaGuid = aaGuid;
+public class SavedPasskey {
+    public string? OwnerId;
+    public byte[]? CredentialId;
+    public byte[]? PublicKey;
+    public uint SignCount = 0;
+    public Guid? AaGuid;
+    public byte[]? AttestationClientDataJson;
+    public PublicKeyCredentialDescriptor? Descriptor;
+    public string? AttestationFormat;
+    public AuthenticatorTransport[]? Transports;
+    public bool IsBackupEligible;
+    public bool IsBackedUp;
+    public byte[]? AttestationObject;
+    public byte[][]? DevicePublicKeys;
 }
