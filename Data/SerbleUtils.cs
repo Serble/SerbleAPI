@@ -24,4 +24,43 @@ public static class SerbleUtils {
             .Select(s => s[_random.Next(s.Length)]).ToArray());
     }
 
+    /// <summary>
+    /// T must be an enum.
+    /// </summary>
+    /// <param name="e"></param>
+    /// <typeparam name="T"></typeparam>
+    /// <returns></returns>
+    public static int ToBitmask<T>(this T[] e) {
+        return e.Aggregate(0, (current, en) => current | Convert.ToInt32(en));
+    }
+
+    public static T[] FromBitmask<T>(int mask) {
+        return Enum.GetValues(typeof(T)).Cast<T>().Where(e => (mask & Convert.ToInt32(e)) != 0).ToArray();
+    }
+
+    public static int GetIndex(this Enum val) {
+        return Array.IndexOf(Enum.GetValues(val.GetType()), val);
+    }
+
+    public static T EnumFromIndex<T>(int index) {
+        return (T) Enum.GetValues(typeof(T)).GetValue(index)!;
+    }
+
+    public static string StringifyMda(this byte[][] arr) {
+        StringBuilder sb = new();
+        foreach (byte[] bytes in arr) {
+            sb.Append(bytes.Base64Encode());
+            sb.Append(',');
+        }
+        return sb.ToString();
+    }
+    
+    public static byte[][] ParseMda(this string str, Func<string, byte[]> parse) {
+        string[] split = str.Split(',');
+        byte[][] arr = new byte[split.Length][];
+        for (int i = 0; i < split.Length; i++) {
+            arr[i] = parse(split[i]);
+        }
+        return arr;
+    }
 }

@@ -60,12 +60,22 @@ public partial class MySqlStorageService : IStorageService {
                            "note MEDIUMTEXT, " +
                            "FOREIGN KEY (user) REFERENCES serblesite_users(id))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_passkeys(
-                            ownerid VARCHAR(64),
-                            credentialid TEXT,
-                            publickey TEXT,
-                            signcount INT,
-                            aaguid VARCHAR(36)
-                            )");
+                            owner_id VARCHAR(64),
+                            credential_id TEXT,
+                            public_key TEXT,
+                            sign_count INT,
+                            aa_guid VARCHAR(64),
+                            attes_client_data_json TEXT,
+                            descriptor_type INT,
+                            descriptor_id TEXT,
+                            descriptor_transports INT,
+                            attes_format TEXT,
+                            transports INT,
+                            backup_eligible BOOL,
+                            backed_up BOOL,
+                            attes_object TEXT,
+                            device_public_keys TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
     }
 
     private void SendMySqlStatement(string statement) {
