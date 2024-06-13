@@ -36,4 +36,8 @@ public interface IStorageService {
     public void UpdateUserNoteContent(string userId, string noteId, string note);
     public void GetUserNoteContent(string userId, string noteId, out string? content);
     public void DeleteUserNote(string userId, string noteId);
+
+    public void CreatePasskey(SavedPasskey key);
+    public void GetUsersPasskeys(string userId, out SavedPasskey[] keys);
+    public void IncrementPasskeySignCount(string userId, byte[] credId);
 }

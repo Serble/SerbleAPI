@@ -8,10 +8,11 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/auth")]
-public class AuthController : ControllerManager {
-    
-    [HttpGet]
-    public IActionResult Get([FromHeader] BasicAuthorizationHeader authorizationHeader) {
+public class AuthController: ControllerManager {
+
+    [HttpGet]  // Keep for backwards compatibility
+    [HttpGet("password")]
+    public IActionResult PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader) {
         if (authorizationHeader.IsNull()) {
             return BadRequest("Authorization header is missing");
         }
