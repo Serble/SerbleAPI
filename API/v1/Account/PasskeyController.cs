@@ -11,11 +11,10 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/auth/passkey")]
 public class PasskeyController(IFido2 fido) : ControllerManager {
-    private IFido2 _fido = fido;
     
     [HttpPost("create")]
-    public IActionResult PasskeyAuth([FromHeader] SerbleAuthorizationHeader auth) {
-        
+    public Task<IActionResult> PasskeyAuth([FromHeader] SerbleAuthorizationHeader auth) {
+        throw new NotImplementedException();  // Keep this func?
     }
 
     [HttpPost("credentialoptions")]
@@ -57,7 +56,7 @@ public class PasskeyController(IFido2 fido) : ControllerManager {
 
         IReadOnlyList<PublicKeyCredentialDescriptor> excludeCreds = [];
 
-        CredentialCreateOptions options = _fido.RequestNewCredential(fidoUser, excludeCreds, authenticatorSelection, attType.ToEnum<AttestationConveyancePreference>(), exts);
+        CredentialCreateOptions options = fido.RequestNewCredential(fidoUser, excludeCreds, authenticatorSelection, attType.ToEnum<AttestationConveyancePreference>(), exts);
 
         // 4. Temporarily store options, session/in-memory cache/redis/db
         HttpContext.Session.SetString("fido2.attestationOptions", options.ToJson());
@@ -74,22 +73,19 @@ public class PasskeyController(IFido2 fido) : ControllerManager {
             CredentialCreateOptions? options = CredentialCreateOptions.FromJson(jsonOptions);
 
             // 2. Create callback so that lib can verify credential id is unique to this user
-            IsCredentialIdUniqueToUserAsyncDelegate callback = static async (args, cancellationToken) => {
-                Program.StorageService!.
-                var users = await DemoStorage.GetUsersByCredentialIdAsync(args.CredentialId, cancellationToken);
-                if (users.Count > 0)
-                    return false;
-
-                return true;
+            IsCredentialIdUniqueToUserAsyncDelegate callback = static (args, _) => {
+                Program.StorageService!.GetUserIdFromPasskeyId(args.CredentialId, out string? userId);
+                return Task.FromResult(userId == null);
             };
 
             // 2. Verify and make the credentials
-            MakeNewCredentialResult success = await _fido.MakeNewCredentialAsync(attestationResponse, options, callback, cancellationToken: cancellationToken);
+            MakeNewCredentialResult success = await fido.MakeNewCredentialAsync(attestationResponse, options, callback, cancellationToken: cancellationToken);
 
             // 3. Store the credentials in db
             string userId = Encoding.UTF8.GetString(success.Result!.User.Id);
             SavedPasskey cred = new() {
                 OwnerId = userId,
+                Name = "Passkey " + Guid.NewGuid(),  // Give it a random now
                 CredentialId = success.Result!.Id,
                 PublicKey = success.Result.PublicKey,
                 AaGuid = success.Result.AaGuid,
@@ -108,7 +104,7 @@ public class PasskeyController(IFido2 fido) : ControllerManager {
             return Json(success);
         }
         catch (Exception e) {
-            return Json(new MakeNewCredentialResult(status: "error", errorMessage: FormatException(e), result: null));
+            return BadRequest("Failed to create credentials: " + e.Message);
         }
     }
 }

@@ -4,6 +4,7 @@ namespace SerbleAPI.Data.Schemas;
 
 public class SavedPasskey {
     public string? OwnerId;
+    public string? Name;
     public byte[]? CredentialId;
     public byte[]? PublicKey;
     public uint SignCount = 0;

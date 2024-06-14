@@ -7,9 +7,10 @@ namespace SerbleAPI.Data.Storage.MySQL;
 public partial class MySqlStorageService {
     public void CreatePasskey(SavedPasskey key) {
         using MySqlCommand cmd = new("INSERT INTO serblesite_user_passkeys" +
-                                     "(owner_id, credential_id, public_key, sign_count, aa_guid, attes_client_data_json, descriptor_type, descriptor_id, descriptor_transports, attes_format, transports, backup_eligible, backed_up, attes_object, device_public_keys) VALUES" +
-                                     "(@owner_id, @credential_id, @public_key, @sign_count, @aa_guid, @attes_client_data_json, @descriptor_type, @descriptor_id, @descriptor_transports, @attes_format, @transports, @backup_eligible, @backed_up, @attes_object, @device_public_keys)", new MySqlConnection(_connectString));
+                                     "(owner_id, name, credential_id, public_key, sign_count, aa_guid, attes_client_data_json, descriptor_type, descriptor_id, descriptor_transports, attes_format, transports, backup_eligible, backed_up, attes_object, device_public_keys) VALUES" +
+                                     "(@owner_id, @name, @credential_id, @public_key, @sign_count, @aa_guid, @attes_client_data_json, @descriptor_type, @descriptor_id, @descriptor_transports, @attes_format, @transports, @backup_eligible, @backed_up, @attes_object, @device_public_keys)", new MySqlConnection(_connectString));
         cmd.Parameters.AddWithValue("@owner_id", key.OwnerId);
+        cmd.Parameters.AddWithValue("@name", key.Name);
         cmd.Parameters.AddWithValue("@credential_id", Convert.ToBase64String(key.CredentialId!));
         cmd.Parameters.AddWithValue("@public_key", Convert.ToBase64String(key.PublicKey!));
         cmd.Parameters.AddWithValue("@sign_count", key.SignCount);
@@ -46,6 +47,7 @@ public partial class MySqlStorageService {
     private static SavedPasskey ReadPasskey(MySqlDataReader reader) {
         return new SavedPasskey {
             OwnerId = reader.GetString("owner_id"),
+            Name = reader.GetString("name"),
             CredentialId = Convert.FromBase64String(reader.GetString("credential_id")),
             PublicKey = Convert.FromBase64String(reader.GetString("public_key")),
             SignCount = reader.GetUInt32("sign_count"),
@@ -64,11 +66,22 @@ public partial class MySqlStorageService {
         };
     }
 
-    public void IncrementPasskeySignCount(string userId, byte[] credId) {
+    public void SetPasskeySignCount(byte[] credId, int val) {
         throw new NotImplementedException();
     }
 
-    public void GetUserIdFromCredentialId(byte[] credId, out string? userId) {
+    public void GetUserIdFromPasskeyId(byte[] credId, out string? userId) {
         throw new NotImplementedException();
+    }
+
+    public void GetPasskey(byte[] credId, out SavedPasskey? key) {
+        using MySqlDataReader reader = MySqlHelper.ExecuteReader(_connectString, "SELECT * FROM serblesite_user_passkeys WHERE credential_id=@id",
+            new MySqlParameter("@id", Convert.ToBase64String(credId)));
+        if (!reader.Read()) {
+            key = null;
+            return;
+        }
+
+        key = ReadPasskey(reader);
     }
 }

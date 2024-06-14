@@ -231,11 +231,19 @@ public class FileStorageService : IStorageService {
         throw new NotImplementedException();
     }
 
+    public void SetPasskeySignCount(byte[] credId, int val) {
+        throw new NotImplementedException();
+    }
+
     public void IncrementPasskeySignCount(string userId, byte[] credId) {
         throw new NotImplementedException();
     }
 
-    public void GetUserIdFromCredentialId(byte[] credId, out string? userId) {
+    public void GetUserIdFromPasskeyId(byte[] credId, out string? userId) {
+        throw new NotImplementedException();
+    }
+
+    public void GetPasskey(byte[] credId, out SavedPasskey? key) {
         throw new NotImplementedException();
     }
 }

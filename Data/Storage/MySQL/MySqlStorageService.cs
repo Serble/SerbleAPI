@@ -61,6 +61,7 @@ public partial class MySqlStorageService : IStorageService {
                            "FOREIGN KEY (user) REFERENCES serblesite_users(id))");
         SendMySqlStatement(@"CREATE TABLE IF NOT EXISTS serblesite_user_passkeys(
                             owner_id VARCHAR(64),
+                            name VARCHAR(255),
                             credential_id TEXT,
                             public_key TEXT,
                             sign_count INT,
