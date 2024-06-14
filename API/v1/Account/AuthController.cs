@@ -91,19 +91,21 @@ public class AuthController(IFido2 fido): ControllerManager {
         }
     }
     
-    [HttpPost]
-    [Route("/assertionOptions")]
+    [HttpPost("passkey/assertionOptions")]
     public ActionResult AssertionOptionsPost([FromForm] string username) {
         try {
-            //var existingCredentials = new List<PublicKeyCredentialDescriptor>();
+            List<PublicKeyCredentialDescriptor>? existingCredentials = [];
 
-            // if (!string.IsNullOrEmpty(username)) {
-            //     // 1. Get user from DB
-            //     var user = DemoStorage.GetUser(username) ?? throw new ArgumentException("Username was not registered");
-            //
-            //     // 2. Get registered credentials from database
-            //     existingCredentials = DemoStorage.GetCredentialsByUser(user).Select(c => c.Descriptor).ToList();
-            // }
+            if (!string.IsNullOrEmpty(username)) {  // Load user's existing creds, so we can filter for only theirs
+                Program.StorageService!.GetUserFromName(username, out User? user);
+                if (user == null) {
+                    throw new Exception("Invalid user");
+                }
+            
+                // Get registered credentials from database
+                Program.StorageService.GetUsersPasskeys(user.Id, out SavedPasskey[] keys);
+                existingCredentials = keys.Select(k => k.Descriptor).ToList()!;
+            }
 
             AuthenticationExtensionsClientInputs exts = new() {
                 Extensions = true,
@@ -111,23 +113,22 @@ public class AuthController(IFido2 fido): ControllerManager {
                 DevicePubKey = new AuthenticationExtensionsDevicePublicKeyInputs()
             };
 
-            // 3. Create options
-            UserVerificationRequirement uv = string.IsNullOrEmpty(userVerification) ? UserVerificationRequirement.Discouraged : userVerification.ToEnum<UserVerificationRequirement>();
+            // Create options
+            const UserVerificationRequirement uv = UserVerificationRequirement.Discouraged;  // Maybe change?
             AssertionOptions options = fido.GetAssertionOptions(
                 existingCredentials,
                 uv,
                 exts
             );
 
-            // 4. Temporarily store options, session/in-memory cache/redis/db
+            // Temporarily store options, session/in-memory cache/redis/db
             HttpContext.Session.SetString("fido2.assertionOptions", options.ToJson());
 
-            // 5. Return options to client
+            // Return options to client
             return Json(options);
         }
-
         catch (Exception e) {
-            return Json(new AssertionOptions { Status = "error", ErrorMessage = FormatException(e) });
+            return BadRequest(e.Message);
         }
     }
     
