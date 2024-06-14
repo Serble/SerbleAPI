@@ -216,6 +216,8 @@ public static class Program {
             builder.Services.AddControllers();
             builder.Services.AddSwaggerGen();
             builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddDistributedMemoryCache();
+            builder.Services.AddMemoryCache();
             builder.WebHost.UseUrls(Config["bind_url"]);
             
             builder.Services.AddFido2(options => {

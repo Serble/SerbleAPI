@@ -20,6 +20,7 @@ public class FileStorageService : IStorageService {
     private Dictionary<string, string> _kv = new();
     private List<(string, string)> _ownedProducts = new();  // (userid, productid)
     private List<(string, string, string)> _userNotes = new();  // (userid, noteid, note)
+    private List<SavedPasskey> _passkeys = new();
 
     public void Init() {
         _users = new List<User>();
@@ -28,6 +29,7 @@ public class FileStorageService : IStorageService {
         _kv = new Dictionary<string, string>();
         _ownedProducts = new List<(string, string)>();
         _userNotes = new List<(string, string, string)>();
+        _passkeys = new();
         
         // Add dummy data
         _users.Add(new User {
@@ -45,14 +47,15 @@ public class FileStorageService : IStorageService {
         Logger.Info("Loading data from data.json...");
         if (File.Exists("data.json")) {
             string jsonData = File.ReadAllText("data.json");
-            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>) data = 
-                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>)>(jsonData);
+            (List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>, List<SavedPasskey>) data = 
+                JsonConvert.DeserializeObject<(List<User>, List<OAuthApp>, List<(string, AuthorizedApp)>, Dictionary<string, string>, List<(string, string)>, List<(string, string, string)>, List<SavedPasskey>)>(jsonData);
             _users = data.Item1;
             _apps = data.Item2;
             _authorizations = data.Item3;
             _kv = data.Item4;
             _ownedProducts = data.Item5;
             _userNotes = data.Item6;
+            _passkeys = data.Item7;
             Logger.Info("Loaded data from data.json");
         } else {
             Logger.Info("No data.json found, creating new data.json");
@@ -70,7 +73,7 @@ public class FileStorageService : IStorageService {
             string errorText = "Unspecified error";
             Logger.Info("Saving data to data.json...");
             try {
-                File.WriteAllText("data.json", JsonConvert.SerializeObject((_users, _apps, _authorizations, _kv, _ownedProducts, _userNotes)));
+                File.WriteAllText("data.json", JsonConvert.SerializeObject((_users, _apps, _authorizations, _kv, _ownedProducts, _userNotes, _passkeys)));
                 Logger.Info("Saved data to data.json");
             }
             catch (JsonException e) {
@@ -224,26 +227,27 @@ public class FileStorageService : IStorageService {
     }
 
     public void CreatePasskey(SavedPasskey key) {
-        throw new NotImplementedException();
+        _passkeys.Add(key);
     }
 
     public void GetUsersPasskeys(string userId, out SavedPasskey[] keys) {
-        throw new NotImplementedException();
+        keys = _passkeys.Where(k => k.OwnerId == userId).ToArray();
     }
 
     public void SetPasskeySignCount(byte[] credId, int val) {
-        throw new NotImplementedException();
-    }
-
-    public void IncrementPasskeySignCount(string userId, byte[] credId) {
-        throw new NotImplementedException();
+        SavedPasskey? key = _passkeys.FirstOrDefault(k => k.CredentialId!.SequenceEqual(credId));
+        if (key == null) return;
+        int index = _passkeys.IndexOf(key);
+        key.SignCount = (uint) val;
+        _passkeys[index] = key;
     }
 
     public void GetUserIdFromPasskeyId(byte[] credId, out string? userId) {
-        throw new NotImplementedException();
+        SavedPasskey? key = _passkeys.FirstOrDefault(k => k.CredentialId!.SequenceEqual(credId));
+        userId = key?.OwnerId;
     }
 
     public void GetPasskey(byte[] credId, out SavedPasskey? key) {
-        throw new NotImplementedException();
+        key = _passkeys.FirstOrDefault(k => k.CredentialId!.SequenceEqual(credId));
     }
 }
