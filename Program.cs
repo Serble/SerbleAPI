@@ -225,7 +225,7 @@ public static class Program {
                     options.ServerName = "FIDO2 Test";
                     options.Origins = Config["fido_origins"].Split(';').ToHashSet();
                     options.TimestampDriftTolerance = 1000 * 60 * 5;
-                    options.ServerIcon = Config["server_icon_url"];
+                    options.ServerIcon = Config["server_icon"];
             }).AddCachedMetadataService(config => {
                 config.AddFidoMetadataRepository(_ => {
                     
