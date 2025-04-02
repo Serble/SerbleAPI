@@ -36,6 +36,7 @@ public static class Program {
         { "admin_contact_email", "admin@serble.net" },
         { "google_recaptcha_site_key", "" },
         { "google_recaptcha_secret_key", "" },
+        { "turnstile_captcha_secret_key", "" },
         { "logging_level", "1" },
         { "website_url", "https://serble.net" },
         { "testing", "true" },

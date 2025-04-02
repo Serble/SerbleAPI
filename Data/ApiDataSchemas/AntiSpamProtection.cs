@@ -28,14 +28,21 @@ public class AntiSpamProtection {
             
             default:
                 return false;
-            
-            case "recaptcha":
+
+            case "recaptcha": {
                 GoogleReCaptchaResponse response = await GoogleReCaptchaHandler.VerifyReCaptcha(split[1]);
                 if (!response.Success) {
                     return false;
                 }
+
                 return response.Score >= 0.5;
-            
+            }
+
+            case "turnstile": {
+                GoogleReCaptchaResponse response = await TurnstileCaptchaHandler.VerifyCaptcha(split[1]);
+                return response.Success;
+            }
+
             case "bypass":
                 return split[1] switch {
                     "testing" => Program.Testing,
