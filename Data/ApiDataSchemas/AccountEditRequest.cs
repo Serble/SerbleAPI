@@ -59,6 +59,7 @@ public class AccountEditRequest {
                         break;
                     case "false":
                         target.TotpEnabled = false;
+                        target.TotpSecret = null;
                         break;
                     default:
                         throw new ArgumentException("Invalid value for ToptEnabled");
