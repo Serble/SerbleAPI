@@ -65,10 +65,14 @@ public static class SerbleUtils {
         return arr;
     }
     
+    // WARNING: The output of this function cannot change, otherwise passwords will break.
     public static string Sha256Hash(this string str) {
-        byte[] bytes = Encoding.UTF8.GetBytes(str);
-        byte[] hash = SHA256.HashData(bytes);
-        return hash.Base64Encode();
+        StringBuilder builder = new();
+        foreach (byte t in SHA256.HashData(Encoding.UTF8.GetBytes(str))) {
+            builder.Append(t.ToString("x2"));
+        }
+
+        return builder.ToString();
     }
     
     public static bool IsNull(this object? obj) {
