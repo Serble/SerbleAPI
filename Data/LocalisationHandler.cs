@@ -1,11 +1,9 @@
-using GeneralPurposeLib;
 using SerbleAPI.Data.Schemas;
 using YamlDotNet.RepresentationModel;
 
 namespace SerbleAPI.Data; 
 
 public static class LocalisationHandler {
-
     private static string[]? _supportLanguages;
     private const string DefaultLanguage = "eng";
     private static Dictionary<string, Dictionary<string, string>>? _translations;
@@ -92,7 +90,6 @@ public static class LocalisationHandler {
         foreach (string lang in _supportLanguages) {
             string translationPath = Path.Combine("Translations", lang, "translations.yaml");
             if (!File.Exists(translationPath)) {
-                Logger.Error($"Translation file for language '{lang}' does not exist");
                 continue;
             }
             string translationYaml = File.ReadAllText(translationPath);
@@ -101,7 +98,6 @@ public static class LocalisationHandler {
             yaml.Load(reader);
             YamlMappingNode? root = (YamlMappingNode) yaml.Documents[0].RootNode;
             if (root == null!) {
-                Logger.Error($"Translation file for language '{lang}' is empty");
                 continue;
             }
             Dictionary<string, string> translations = new();
@@ -115,14 +111,12 @@ public static class LocalisationHandler {
         
         // Add any keys in the default language but not in other languages to all languages
         if (!_translations.ContainsKey(DefaultLanguage)) {
-            Logger.Error($"Default language '{DefaultLanguage}' does not exist");
             return;
         }
         Dictionary<string, string> defaultTranslations = _translations[DefaultLanguage];
         foreach (string lang in _supportLanguages) {
             if (lang == DefaultLanguage) continue;
             if (!_translations.ContainsKey(lang)) {
-                Logger.Error($"Language '{lang}' does not exist");
                 continue;
             }
             Dictionary<string, string> translations = _translations[lang];

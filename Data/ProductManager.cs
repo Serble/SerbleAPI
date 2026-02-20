@@ -1,18 +1,18 @@
 using System.Text.Json;
-using GeneralPurposeLib;
 using Newtonsoft.Json;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
 using File = System.IO.File;
 
 namespace SerbleAPI.Data; 
 
+// TODO: Have this be a service and DI
+// TODO: Load products from regular config not custom one
 public static class ProductManager {
-
     private static SerbleProduct[] _products = null!;
 
     public static void Load() {
         if (!File.Exists("products.json")) {
-            Logger.Info("products.json does not exist, creating it");
             SerbleProduct[] examples = {
                 new() {
                     Name = "Premium",
@@ -32,7 +32,6 @@ public static class ProductManager {
         }
         string json = File.ReadAllText("products.json");
         _products = JsonConvert.DeserializeObject<SerbleProduct[]>(json)!;
-        Logger.Info($"Loaded {_products.Length} products");
     }
 
     public static SerbleProduct? GetProductFromPriceId(string priceId) {
@@ -47,8 +46,8 @@ public static class ProductManager {
         return ids.Select(GetProductFromId).ToArray();
     }
     
-    public static SerbleProduct[] ListOfProductsFromUser(User target) {
-        Program.StorageService!.GetOwnedProducts(target.Id, out string[] products);
+    public static SerbleProduct[] ListOfProductsFromUser(User target, IProductRepository productRepo) {
+        string[] products = productRepo.GetOwnedProducts(target.Id);
         return GetProductsFromIds(products).Where(product => product != null).Select(product => product!).ToArray();
     }
 

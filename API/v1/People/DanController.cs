@@ -36,15 +36,16 @@ public class DanController : ControllerManager {
         return Ok("Yay I've been patched");
     }
     
+    // OPTIONS are dead code, but these are kept
+    // because they're funny.
+    
     [HttpOptions]
     public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
         return Ok("Stop");
     }
     
     [HttpOptions("{arg}")]
     public ActionResult OptionsArg() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
         return Ok("Stop");
     }
     

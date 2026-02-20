@@ -1,8 +1,13 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
-using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
+using SerbleAPI.Services;
 using Stripe;
 using Stripe.Checkout;
 
@@ -10,21 +15,20 @@ namespace SerbleAPI.API.v1.Payments;
 
 [Route("api/v1/payments")]
 [Controller]
-public class CreateCheckoutController : ControllerManager {
-    
+public class CreateCheckoutController(
+    IOptions<ApiSettings> apiSettings,
+    IUserRepository userRepo,
+    ITokenService tokens) : ControllerManager {
+
     [HttpPost("checkout")]
-    public ActionResult<dynamic> CreateCheckoutSession([FromHeader] SerbleAuthorizationHeader authorization, [FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
-        if (!authorization.Check(out string scopes, out SerbleAuthorizationHeaderType? _, out string _, out User? target)) {
+    [Authorize(Policy = "Scope:PaymentInfo")]
+    public ActionResult<dynamic> CreateCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) {
             return Unauthorized();
         }
 
-        ScopeHandler.ScopesEnum[] scopeStringToEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
-        if (!scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
-            return Forbid();
-        }
-
-        string domain = Program.Config!["website_url"];
-
+        string domain = apiSettings.Value.WebsiteUrl;
         string[] lookupKeys;
         try {
             lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out _);
@@ -32,163 +36,79 @@ public class CreateCheckoutController : ControllerManager {
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
         }
-        PriceListOptions priceOptions = new() {
-            LookupKeys = lookupKeys.ToList()
-        };
-        PriceService priceService = new();
-        StripeList<Price> prices = priceService.List(priceOptions);
 
+        StripeList<Price> prices = new PriceService().List(new PriceListOptions {
+            LookupKeys = lookupKeys.ToList()
+        });
         if (!prices.Any()) {
             return BadRequest("No valid items were provided");
         }
 
         target.EnsureStripeCustomer();
-        SessionCreateOptions options = new() {
-            LineItems = new List<SessionLineItemOptions> {
-                new() {
-                    Price = prices.Data[0].Id,
-                    Quantity = 1,
-                },
-            },
+        Session session = new SessionService().Create(new SessionCreateOptions {
+            LineItems = [
+                new SessionLineItemOptions {
+                    Price = prices.Data[0].Id, Quantity = 1
+                }
+            ],
             Mode = mode,
             SuccessUrl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}",
             CancelUrl = domain + "/store/cancel",
             ClientReferenceId = target.Id,
             Customer = target.StripeCustomerId
-        };
-
-        SessionService service = new();
-        Session session = service.Create(options);
-
-        Response.Headers.Add("Location", session.Url);
+        });
+        Response.Headers.Append("Location", session.Url);
         return new { url = session.Url };
     }
-    
-    [HttpPost("checkoutanon")]
-    public ActionResult<dynamic> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
-        string domain = Program.Config!["website_url"];
 
+    // Anonymous checkout — no user account needed
+    [HttpPost("checkoutanon")]
+    [AllowAnonymous]
+    public ActionResult<dynamic> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
+        string domain = apiSettings.Value.WebsiteUrl;
         string[] lookupKeys;
         List<SerbleProduct> prods;
-        try {
-            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods);
-        }
-        catch (KeyNotFoundException e) {
-            return NotFound("Invalid product ID: " + e.Message);
-        }
-        PriceListOptions priceOptions = new() {
-            LookupKeys = lookupKeys.ToList()
-        };
-        PriceService priceService = new();
-        StripeList<Price> prices = priceService.List(priceOptions);
+        try { lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods); }
+        catch (KeyNotFoundException e) { return NotFound("Invalid product ID: " + e.Message); }
 
-        if (!prices.Any()) {
-            return BadRequest("No valid items were provided");
-        }
-        
+        StripeList<Price> prices = new PriceService().List(new PriceListOptions { LookupKeys = lookupKeys.ToList() });
+        if (!prices.Any()) return BadRequest("No valid items were provided");
+
         string surl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}";
         if (prods.Count == 1 && prods.Single().SuccessRedirect != null) {
-            // Generate a token for if it succeeds
-            string tok =
-                TokenHandler.GenerateCheckoutSuccessToken(prods.Single().Id, prods.Single().SuccessTokenSecret!);
+            string tok = tokens.GenerateCheckoutSuccessToken(prods.Single().Id, prods.Single().SuccessTokenSecret!);
             surl = prods.Single().SuccessRedirect!.Replace("{token}", tok);
         }
-
-        SessionCreateOptions options = new() {
-            LineItems = new List<SessionLineItemOptions> {
-                new() {
-                    Price = prices.Data[0].Id,
-                    Quantity = 1,
-                },
-            },
-            Mode = mode,
-            SuccessUrl = surl,
-            CancelUrl = domain + "/store/cancel"
-        };
-
-        SessionService service = new();
-        Session session = service.Create(options);
-
-        Response.Headers.Add("Location", session.Url);
+        Session session = new SessionService().Create(new SessionCreateOptions {
+            LineItems = [new SessionLineItemOptions { Price = prices.Data[0].Id, Quantity = 1 }],
+            Mode = mode, SuccessUrl = surl, CancelUrl = domain + "/store/cancel"
+        });
+        Response.Headers.Append("Location", session.Url);
         return new { url = session.Url };
     }
-    
+
     [HttpPost("portal")]
     [Obsolete("Customer ID is no longer provided to clients.")]
+    [AllowAnonymous]
     public ActionResult CreatePortalSession() {
-        string customerId = Request.Form["customer_id"];
-
-        // This is the URL to which your customer will return after
-        // they are done managing billing in the Customer Portal.
-        string returnUrl = Program.Config!["website_url"];
-
-        Stripe.BillingPortal.SessionCreateOptions options = new() {
-            Customer = customerId,
-            ReturnUrl = returnUrl,
-        };
-        Stripe.BillingPortal.SessionService service = new();
+        string customerId = Request.Form["customer_id"]!;
+        Stripe.BillingPortal.SessionCreateOptions options = new() { Customer = customerId, ReturnUrl = apiSettings.Value.WebsiteUrl };
         Stripe.BillingPortal.Session? session;
-        try {
-            session = service.Create(options);
-        }
-        catch (StripeException) {
-            return BadRequest("Invalid Customer");
-        }
-
-        Response.Headers.Add("Location", session.Url);
+        try { session = new Stripe.BillingPortal.SessionService().Create(options); }
+        catch (StripeException) { return BadRequest("Invalid Customer"); }
+        Response.Headers.Append("Location", session.Url);
         return new StatusCodeResult(303);
     }
 
-    /// <summary>
-    /// Get the URL for the customer portal.
-    /// </summary>
-    /// <remarks>
-    /// Requires the payment_info scope.
-    /// </remarks>
-    /// <returns>A URL that will send the user to their Stripe portal.</returns>
     [HttpGet("portal")]
-    public ActionResult<dynamic> SendUserToPortal([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string scopes, out SerbleAuthorizationHeaderType? type, out string _, out User target)) {
-            return Unauthorized();
-        }
-
-        ScopeHandler.ScopesEnum[] scopeStringToEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
-        if (!scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopeStringToEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
-            return Forbid("Insufficient scope");
-        }
-        
+    [Authorize(Policy = "Scope:PaymentInfo")]
+    public ActionResult<dynamic> SendUserToPortal() {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) return Unauthorized();
         target.EnsureStripeCustomer();
-        string? stripeCustomerId = target.StripeCustomerId;
-
-        string returnUrl = Program.Config!["website_url"];
-
-        Stripe.BillingPortal.SessionCreateOptions options = new() {
-            Customer = stripeCustomerId,
-            ReturnUrl = returnUrl,
-        };
-        Stripe.BillingPortal.SessionService service = new();
-        Stripe.BillingPortal.Session? session = service.Create(options);
-
-        Response.Headers.Add("Location", session.Url);
+        Stripe.BillingPortal.Session session = new Stripe.BillingPortal.SessionService().Create(
+            new Stripe.BillingPortal.SessionCreateOptions { Customer = target.StripeCustomerId, ReturnUrl = apiSettings.Value.WebsiteUrl });
+        Response.Headers.Append("Location", session.Url);
         return new { url = session.Url };
     }
-
-    [HttpOptions("checkout")]
-    public IActionResult OptionsCheckout() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
-        return Ok();
-    }
-    
-    [HttpOptions("checkoutanon")]
-    public IActionResult OptionsCheckoutAnon() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
-        return Ok();
-    }
-    
-    [HttpOptions("portal")]
-    public IActionResult OptionsPortal() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
-        return Ok();
-    }
-    
 }

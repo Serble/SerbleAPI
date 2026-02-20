@@ -1,18 +1,18 @@
 using Microsoft.AspNetCore.Mvc;
-using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Services; 
 
 [ApiController]
 [Route("api/v1/recaptcha")]
-public class ReCaptchaController : ControllerManager {
+public class ReCaptchaController(IGoogleReCaptchaService reCaptchaService) : ControllerManager {
 
     [HttpPost]
     public async Task<ActionResult<int>> Post([FromQuery] string token) {
         
         // Verify
-        GoogleReCaptchaResponse response = await GoogleReCaptchaHandler.VerifyReCaptcha(token);
+        GoogleReCaptchaResponse response = await reCaptchaService.VerifyReCaptcha(token);
         
         if (!response.Success) {
             return BadRequest("Error validating recaptcha");
@@ -20,11 +20,4 @@ public class ReCaptchaController : ControllerManager {
         
         return Ok(response.Score);
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
-        return Ok("Thank you");
-    }
-    
 }

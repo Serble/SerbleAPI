@@ -15,11 +15,4 @@ public class Redirect : ControllerManager {
     public IActionResult Post([FromBody] string to) {
         return Redirect(to);
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
-        return Ok();
-    }
-    
 }

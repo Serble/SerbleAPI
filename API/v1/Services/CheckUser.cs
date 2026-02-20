@@ -22,11 +22,4 @@ public class CheckUser : ControllerManager {
         
         return Redirect(QueryHelpers.AddQueryString(redirect, "success", "true"));
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
 }

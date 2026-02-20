@@ -1,20 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SerbleAPI.Config;
 
 namespace SerbleAPI.API.v1.Account; 
 
 [ApiController]
 [Route("api/v1/oauth/auth")]
-public class OAuthAuthController : ControllerManager {
+public class OAuthAuthController(IOptions<ApiSettings> apiSettings) : ControllerManager {
 
     [HttpGet]
     public ActionResult<string> Get() {
-        return Redirect(Program.Config!["website_url"] + "/oauth/authorize");
+        return Redirect(apiSettings.Value.WebsiteUrl + "/oauth/authorize");
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
 }

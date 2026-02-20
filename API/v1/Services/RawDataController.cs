@@ -11,11 +11,4 @@ public class RawDataController : ControllerManager {
     public ActionResult<string[]> Get() {
         return Ok(RawDataManager.EnglishWords);
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
 }
