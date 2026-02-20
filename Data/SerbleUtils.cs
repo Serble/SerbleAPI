@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace SerbleAPI.Data; 
@@ -62,5 +63,22 @@ public static class SerbleUtils {
             arr[i] = parse(split[i]);
         }
         return arr;
+    }
+    
+    public static string Sha256Hash(this string str) {
+        byte[] bytes = Encoding.UTF8.GetBytes(str);
+        byte[] hash = SHA256.HashData(bytes);
+        return hash.Base64Encode();
+    }
+    
+    public static bool IsNull(this object? obj) {
+        return obj == null;
+    }
+    
+    public static T ThrowIfNull<T>(this T? obj) where T : class {
+        if (obj == null) {
+            throw new Exception("Object is null");
+        }
+        return obj;
     }
 }

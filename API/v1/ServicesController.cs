@@ -22,17 +22,4 @@ public class ServicesController : ControllerManager {
         }
         return Ok(status.First());
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
-    [HttpOptions("{id}")]
-    public ActionResult OptionsArg() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
 }

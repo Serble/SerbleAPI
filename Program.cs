@@ -1,311 +1,153 @@
-using System.Security;
-using Fido2NetLib;
-using GeneralPurposeLib;
+using Microsoft.EntityFrameworkCore;
+using SerbleAPI.API;
+using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Raw;
-using SerbleAPI.Data.Storage;
-using SerbleAPI.Data.Storage.MySQL;
+using SerbleAPI.Models;
+using SerbleAPI.Repositories;
+using SerbleAPI.Repositories.Impl;
+using SerbleAPI.Services;
+using SerbleAPI.Services.Impl;
 using Stripe;
-using File = System.IO.File;
-using LogLevel = GeneralPurposeLib.LogLevel;
-using UnauthorizedAccessException = System.UnauthorizedAccessException;
+using TokenService = SerbleAPI.Services.Impl.TokenService;
 
 namespace SerbleAPI;
 
 public static class Program {
-    
-    private static ConfigManager? _configManager;
-    private static readonly Dictionary<string, string> ConfigDefaults = new() {
-        { "bind_url", "http://*:5000" },
-        { "storage_service", "file" },
-        { "http_authorization_token", "my very secure auth token" },
-        { "http_url", "https://myverysecurestoragebackend.io/" },
-        { "my_host" , "https://theplacewherethisappisaccessable.com/" },
-        { "my_domain", "serble.net" },
-        { "fido_origins", "https://serble.net;https://www.serble.net;https://serble" },
-        { "token_issuer", "CoPokBl" },
-        { "token_audience", "Privileged Users" },
-        { "token_secret" , Guid.NewGuid().ToString() },
-        { "mysql_ip", "mysql.example.com" },
-        { "mysql_user", "coolperson" },
-        { "mysql_password", "myverysecurepassword" },
-        { "mysql_database", "serble" },
-        { "smtp_username", "system@serble.net" },
-        { "smtp_password", "very secure password" },
-        { "smtp_host", "smtp.serble.net" },
-        { "smtp_port", "587" },
-        { "EmailAddress_System", "system@serble.net" },
-        { "EmailAddress_Newsletter", "newsletter@serble.net" },
-        { "admin_contact_email", "admin@serble.net" },
-        { "google_recaptcha_site_key", "" },
-        { "google_recaptcha_secret_key", "" },
-        { "turnstile_captcha_secret_key", "" },
-        { "logging_level", "1" },
-        { "website_url", "https://serble.net" },
-        { "testing", "true" },
-        { "stripe_key", "stripe_api_key" },
-        { "stripe_test_key", "stripe_api_key" },
-        { "stripe_webhook_secret", "we_**************" },
-        { "stripe_testing_webhook_secret", "we_**************" },
-        { "stripe_premium_sub_id", "SerblePremiumPriceID" },
-        { "stripe_testing_premium_sub_id", "SerblePremiumPriceID" },
-        { "give_products_to_non_admins_while_testing", "false" },
-        { "fido_mds_cache_dir", "./mdscache" },
-        { "server_icon", "https://serble.net/assets/images/icon.png" }
-    };
-    public static Dictionary<string, string>? Config;
-    public static IStorageService? StorageService;
-    public static bool RunApp = true;
-    public static bool RestartApp = false;
-    public static bool RestartAppOnce;
-    public static bool Testing;
-    
+    private static bool _runApp = true;
+
     private static int Main(string[] args) {
-
-        try {
-            Logger.Init(LogLevel.Debug);
-        }
-        catch (Exception e) {
-            Console.WriteLine(e);
-            Console.WriteLine("Failed to initialize logger");
-            return 1;
-        }
-
-        int stopCode = 0;
-        bool firstRun = true;
-        try {
-            while (RestartApp || RestartAppOnce || firstRun) {
-                if (firstRun) { firstRun = false; }
-                if (RestartAppOnce) { RestartAppOnce = false; }
-                stopCode = Run(args);
-                Logger.Warn("Application stopped with code " + stopCode);
-            }
-            return stopCode;
-        }
-        catch (Exception e) {
-            Logger.Error(e);
-            Logger.Error("The application has crashed due to an unhandled exception.");
-            stopCode = 1;
-        }
-
-        try {
-            Logger.WaitFlush();
-        }
-        catch (Exception e) {
-            Console.WriteLine(e);
-            Console.WriteLine("Failed to flush logger, writing error to logfail.log");
-            try {
-                File.WriteAllText("logfail.log", e.ToString());
-            }
-            catch (UnauthorizedAccessException) {
-                Console.WriteLine("Failed to write logfail.log due to access denied error.");
-                return 1;
-            }
-            catch (SecurityException) {
-                Console.WriteLine("Failed to write logfail.log due to access denied error.");
-                return 1;
-            }
-            catch (IOException ioException) {
-                Console.WriteLine(ioException);
-                Console.WriteLine("Failed to write logfail.log due to IO Error.");
-                return 1;
-            }
-            catch (Exception writeFailEx) {
-                Console.WriteLine(writeFailEx);
-                Console.WriteLine("Failed to write logfail.log due to an unknown error.");
-                return 1;
-            }
-        }
-        return stopCode;
+        return Run(args);
     }
     
     private static int Run(string[] args) {
-        
-        // Intercepts Ctrl+C and Ctrl+Break
-        Console.CancelKeyPress += (sender, eventArgs) => {
-            Logger.Info("Received cancel signal, shutting down...");
-            RunApp = false;
+        Console.CancelKeyPress += (_, eventArgs) => {
+            Console.WriteLine("Shutting down...");
+            _runApp = false;
             eventArgs.Cancel = true;
         };
-
-        // Config
-        Logger.Info("Loading config...");
-        _configManager = new ConfigManager("config.json", ConfigDefaults);
-        Config = _configManager.LoadConfig();
-        Testing = Config["testing"] == "true";
-        StripeConfiguration.ApiKey = Testing ? Config["stripe_test_key"] : Config["stripe_key"];
-        Logger.Info("Config loaded.");
         
-        ProductManager.Load();
-        
-        // Loglevel
-        switch (Config["logging_level"]) {
-            case "0":
-                Logger.LoggingLevel = LogLevel.None;
-                break;
-            case "1":
-                Logger.LoggingLevel = LogLevel.Debug;
-                break;
-            case "2":
-                Logger.LoggingLevel = LogLevel.Info;
-                break;
-            case "3":
-                Logger.LoggingLevel = LogLevel.Warn;
-                break;
-            case "4":
-                Logger.LoggingLevel = LogLevel.Error;
-                break;
-            default:
-                Logger.Error("Invalid logging level in config, defaulting to Info.");
-                Logger.LoggingLevel = LogLevel.Info;
-                break;
-        }
-
-        // Storage service
-        try {
-            StorageService = Config["storage_service"].ToLower() switch {
-                "file" => new FileStorageService(),
-                "mysql" => new MySqlStorageService(),
-                _ => throw new Exception("Unknown storage service")
-            };
-        }
-        catch (Exception e) {
-            if (e.Message != "Unknown storage service") throw;
-            Logger.Error("Invalid storage service specified in config.");
-            return 1;
-        }
-
-        // Init storage
-        Logger.Info("Initializing storage...");
-        try {
-            StorageService.Init();
-        }
-        catch (Exception e) {
-            Logger.Error("Failed to initialize storage");
-            Logger.Error(e);
-            return 1;
-        }
-
-        if (args.Length != 0) {
-
-            switch (args[0]) {
-                
-                default:
-                    Console.WriteLine("Unknown command");
-                    return 1;
-
-            }
-        }
-        
-        // Load Raw Data
-        Logger.Info("Loading raw data...");
-        try {
-            RawDataManager.LoadRawData();
-            Logger.Info("Raw data loaded.");
-        }
-        catch (Exception e) {
-            Logger.Error("Failed to load raw data");
-            Logger.Error(e);
-            return 1;
-        }
-
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-        // Add services to the container.
-        try {
-            builder.Services.AddControllers();
-            builder.Services.AddSwaggerGen();
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddDistributedMemoryCache();
-            builder.Services.AddMemoryCache();
-            builder.WebHost.UseUrls(Config["bind_url"]);
-            
-            builder.Services.AddFido2(options => {
-                    options.ServerDomain = Config["my_domain"];
-                    options.ServerName = "FIDO2 Test";
-                    options.Origins = Config["fido_origins"].Split(';').ToHashSet();
-                    options.TimestampDriftTolerance = 1000 * 60 * 5;
-                    options.ServerIcon = Config["server_icon"];
-            }).AddCachedMetadataService(config => {
-                config.AddFidoMetadataRepository(_ => {
-                    
-                });
+        // Startup time config info
+        StripeSettings? stripeSettings = builder.Configuration.GetSection("Stripe").Get<StripeSettings>();
+        ApiSettings? apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>();
+        PasskeySettings? passkeySettings = builder.Configuration.GetSection("Passkey").Get<PasskeySettings>();
+        if (stripeSettings == null || apiSettings == null || passkeySettings == null) {
+            throw new Exception("Stripe or API or Passkey settings not found in configuration");
+        }
+        StripeConfiguration.ApiKey = stripeSettings.ApiKey;
+        
+        ProductManager.Load();
+        RawDataManager.LoadRawData();
+        
+        builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
+        builder.Services.AddOptions<StripeSettings>().Bind(builder.Configuration.GetSection("Stripe"));
+        builder.Services.AddOptions<PasskeySettings>().Bind(builder.Configuration.GetSection("Passkey"));
+        builder.Services.AddOptions<EmailSettings>().Bind(builder.Configuration.GetSection("Email"));
+        builder.Services.AddOptions<ReCaptchaSettings>().Bind(builder.Configuration.GetSection("ReCaptcha"));
+        builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
+        builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
+        
+        builder.Services.AddControllers();
+        builder.Services.AddSwaggerGen();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddDistributedMemoryCache();
+        builder.Services.AddMemoryCache();
+        builder.Services.AddSession(options => {
+            options.IdleTimeout = TimeSpan.FromMinutes(5);
+            options.Cookie.HttpOnly = true;
+            options.Cookie.IsEssential = true;
+        });
+        
+        builder.Services.AddDbContext<SerbleDbContext>(options =>
+            options.UseMySql(builder.Configuration.GetConnectionString("MySql"),
+                ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("MySql"))));
+
+        builder.Services.AddScoped<IAntiSpamService, AntiSpamService>();
+        builder.Services.AddScoped<IGoogleReCaptchaService, GoogleReCaptchaService>();
+        builder.Services.AddScoped<ITokenService, TokenService>();
+        builder.Services.AddScoped<ITurnstileCaptchaService, TurnstileCaptchaService>();
+        builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
+
+        // db repos
+        builder.Services.AddScoped<IUserRepository, UserRepository>();
+        builder.Services.AddScoped<IAppRepository, AppRepository>();
+        builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
+        builder.Services.AddScoped<IProductRepository, ProductRepository>();
+        builder.Services.AddScoped<INoteRepository, NoteRepository>();
+        builder.Services.AddScoped<IKvRepository, KvRepository>();
+
+        // Authentication
+        builder.Services.AddAuthentication(SerbleAuthenticationHandler.SchemeName)
+            .AddScheme<SerbleAuthenticationOptions, SerbleAuthenticationHandler>(
+                SerbleAuthenticationHandler.SchemeName, _ => { });
+
+        // Authorisation
+        // Register one policy per scope: [Authorize(Policy = "Scope:Vault")] etc.
+        // Also a UserOnly policy that blocks app tokens.
+        builder.Services.AddAuthorization(opts => {
+            foreach (ScopeHandler.ScopesEnum scope in Enum.GetValues<ScopeHandler.ScopesEnum>()) {
+                ScopeHandler.ScopesEnum captured = scope;
+                opts.AddPolicy($"Scope:{captured}", p =>
+                    p.RequireAuthenticatedUser()
+                     .RequireAssertion(ctx => ctx.User.HasScope(captured)));
+            }
+            opts.AddPolicy("UserOnly", p =>
+                p.RequireAuthenticatedUser()
+                 .RequireAssertion(ctx => ctx.User.IsUser()));
+        });
+
+        builder.WebHost.UseUrls(apiSettings.BindUrl);  // move IP binding to config because I hate launchSettings.json
+        
+        builder.Services.AddFido2(options => {
+            options.ServerDomain = passkeySettings.RelyingPartyId;
+            options.ServerName = passkeySettings.RelyingPartyName;
+            options.Origins = passkeySettings.AllowedOrigins.ToHashSet();
+            options.TimestampDriftTolerance = 1000 * 60 * 5;
+            options.ServerIcon = passkeySettings.ServerIconUrl;
+        }).AddCachedMetadataService(config => {
+            config.AddFidoMetadataRepository(_ => {
+                
             });
-        }
-        catch (Exception e) {
-            Logger.Error(e);
-            Logger.Error("Failed to add services");
-            return 1;
-        }
+        });
         
         // Init services
-        Logger.Info("Initializing services...");
-        try {
-            ServicesStatusService.Init();
-        }
-        catch (Exception e) {
-            Logger.Error("Failed to initialize services");
-            Logger.Error(e);
-            return 1;
-        }
+        ServicesStatusService.Init();
 
-        WebApplication app;
-        try {
-            app = builder.Build();
+        WebApplication app = builder.Build();
             
-            if (!app.Environment.IsDevelopment()) {
-                app.UseExceptionHandler("/Error");
-                app.UseHsts();
-            }
-
-            app.MapControllers();
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
-        catch (Exception e) {
-            Logger.Error(e);
-            Logger.Error("Failed to initialize application");
-            return 1;
+        if (!app.Environment.IsDevelopment()) {
+            app.UseExceptionHandler("/Error");
+            app.UseHsts();
         }
 
-        bool didError = false;
-        try {
-            CancellationTokenSource tokenSource = new();
-            CancellationToken cancellationToken = tokenSource.Token;
-            Task appTask = app.RunAsync(cancellationToken);
-            Logger.Info("Application started");
-            
-            while (RunApp) {
-                if (appTask.IsCompleted) {
-                    Logger.Info("Application execution finished");
-                    break;
-                }
-                Thread.Sleep(100);
+        // Middleware order: cors/options -> redirects -> session -> auth -> controllers
+        app.UseMiddleware<SerbleCorsMiddleware>();
+        app.UseMiddleware<RedirectsMiddleware>();
+        app.UseSession();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapControllers();
+        app.UseSwagger();
+        app.UseSwaggerUI();
+
+        CancellationTokenSource tokenSource = new();
+        CancellationToken cancellationToken = tokenSource.Token;
+        Task appTask = app.RunAsync(cancellationToken);
+        
+        while (_runApp) {
+            if (appTask.IsCompleted) {
+                break;
             }
-            tokenSource.Cancel();
-            Logger.Info("Attempting to stop application (Will abort after 10 seconds)");
-            bool successfulStop = appTask.Wait(new TimeSpan(0, 0, 10));
-            Logger.Info(!successfulStop
-                ? "Application stop timed out, completing execution"
-                : "Server stopped with no errors.");
+            Thread.Sleep(100);
         }
-        catch (Exception e) {
-            Logger.Error(e);
-            Logger.Error("Server stopped with error.");
-            didError = true;
-        }
+        tokenSource.Cancel();
+        Console.WriteLine("Attempting to stop application (Will abort after 10 seconds)");
+        appTask.Wait(new TimeSpan(0, 0, 10));
         
-        // Shutdown storage
-        Logger.Info("Shutting down storage...");
-        try {
-            StorageService.Deinit();
-        }
-        catch (Exception e) {
-            Logger.Error("Failed to shutdown storage");
-            Logger.Error(e);
-        }
-        
-        return didError ? 1 : 0;
+        return 0;
     }
 
 }

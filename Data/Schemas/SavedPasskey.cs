@@ -3,7 +3,7 @@ using Fido2NetLib.Objects;
 namespace SerbleAPI.Data.Schemas;
 
 public class SavedPasskey {
-    public string? OwnerId;
+    public string OwnerId = null!;
     public string? Name;
     public byte[]? CredentialId;
     public byte[]? PublicKey;

@@ -1,8 +1,8 @@
-using GeneralPurposeLib;
 using Microsoft.AspNetCore.Mvc;
-using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
+using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Account; 
 
@@ -10,7 +10,10 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/oauth/token")]
-public class OAuthTokenController : ControllerManager {
+public class OAuthTokenController(
+    ILogger<OAuthTokenController> logger,
+    ITokenService tokens,
+    IAppRepository appRepo) : ControllerManager {
 
     [HttpPost("refresh")]
     public ActionResult<AccessTokenResponse> RequestTokens(
@@ -18,11 +21,11 @@ public class OAuthTokenController : ControllerManager {
         [FromQuery] string client_id,
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
-        Logger.Debug("Validating oauth code: " + code);
-        if (!TokenHandler.ValidateAuthorizationToken(code, client_id, out User? user, out string scope, out string reason)) {
+        logger.LogDebug("Validating oauth code: " + code);
+        if (!tokens.ValidateAuthorizationToken(code, client_id, out User? user, out string scope, out string reason)) {
             return BadRequest("Invalid authorization code: " + reason);
         }
-        Program.StorageService!.GetOAuthApp(client_id, out OAuthApp? app);
+        OAuthApp? app = appRepo.GetOAuthApp(client_id);
         if (app == null) {
             return BadRequest("Invalid client_id");
         }
@@ -35,8 +38,8 @@ public class OAuthTokenController : ControllerManager {
 
         return Ok(new AccessTokenResponse {
             ExpiresIn = 87600,
-            AccessToken = TokenHandler.GenerateAccessToken(user!.Id, scope),
-            RefreshToken = TokenHandler.GenerateRefreshToken(user.Id, client_id, scope),
+            AccessToken = tokens.GenerateAccessToken(user!.Id, scope),
+            RefreshToken = tokens.GenerateRefreshToken(user.Id, client_id, scope),
             TokenType = "bearer"
         });
     }
@@ -47,10 +50,10 @@ public class OAuthTokenController : ControllerManager {
         [FromQuery] string client_id,
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
-        if (!TokenHandler.ValidateRefreshToken(refresh_token, client_id, out User? user, out string scope)) {
+        if (!tokens.ValidateRefreshToken(refresh_token, client_id, out User? user, out string scope)) {
             return BadRequest("Invalid authorization code");
         }
-        Program.StorageService!.GetOAuthApp(client_id, out OAuthApp? app);
+        OAuthApp? app = appRepo.GetOAuthApp(client_id);
         if (app == null) {
             return BadRequest("Invalid client_id");
         }
@@ -66,22 +69,9 @@ public class OAuthTokenController : ControllerManager {
 
         return Ok(new AccessTokenResponse {
             ExpiresIn = 1,
-            AccessToken = TokenHandler.GenerateAccessToken(user.Id, scope),
+            AccessToken = tokens.GenerateAccessToken(user.Id, scope),
             RefreshToken = refresh_token,
             TokenType = "bearer"
         });
     }
-    
-    [HttpOptions("access")]
-    public ActionResult OptionsAcc() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
-        return Ok();
-    }
-    
-    [HttpOptions("refresh")]
-    public ActionResult OptionsRef() {
-        HttpContext.Response.Headers.Add("Allow", "POST, OPTIONS");
-        return Ok();
-    }
-    
 }

@@ -1,125 +1,124 @@
-using GeneralPurposeLib;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
+using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/account/")]
-public class AccountController : ControllerManager {
-    
-    [HttpGet]
-    public ActionResult<SanitisedUser> Get([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? _, out string? msg,
-                out User target)) return new SanitisedUser(target, scopes);
-        return Unauthorized();
-    }
-    
-    [HttpDelete]
-    public ActionResult Delete([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.CheckAndGetInfo(out User target, out Dictionary<string, string> t, null, false, Request)) {
-            return Unauthorized();
-        }
+[Authorize]
+public class AccountController(
+    ILogger<AccountController> logger,
+    IOptions<EmailSettings> emailSettings,
+    IAntiSpamService antiSpam,
+    IUserRepository userRepo,
+    IEmailConfirmationService emailConfirmation) : ControllerManager {
 
-        // Delete the user's account
-        Program.StorageService!.DeleteUser(target.Id);
-        
+    [HttpGet]
+    public ActionResult<SanitisedUser> Get() {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) return Unauthorized();
+        return new SanitisedUser(target, HttpContext.User.GetScopeString());
+    }
+
+    [HttpDelete]
+    [Authorize(Policy = "UserOnly")]
+    public ActionResult Delete() {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) return Unauthorized();
+
+        userRepo.DeleteUser(target.Id);
+
         if (!target.VerifiedEmail) return Ok();
-        
-        // Send an email
+
         string body = EmailSchemasService.GetEmailSchema(EmailSchema.AccountDeleted, LocalisationHandler.LanguageOrDefault(target));
         body = body.Replace("{name}", target.Username);
-        Email email = new(
-            target.Email.ToSingleItemEnumerable().ToArray(), 
-            FromAddress.System, "Serble Account Deletion", 
-            body);
-        email.SendNonBlocking();  // Don't await so the thread can continue
+        Email email = new(logger, emailSettings.Value,
+            target.Email.ToSingleItemEnumerable().ToArray(),
+            FromAddress.System, "Serble Account Deletion", body);
+        email.SendNonBlocking();
         return Ok();
     }
 
     [HttpPost]
-    public async Task<ActionResult<SanitisedUser>> Register([FromBody] RegisterRequestBody requestBody, [FromHeader] AntiSpamProtection antiSpam) {
-        if (!await antiSpam.Check(HttpContext)) {
+    [AllowAnonymous]
+    public async Task<ActionResult<SanitisedUser>> Register([FromBody] RegisterRequestBody requestBody, [FromHeader] AntiSpamHeader antiSpamHeader) {
+        if (!await antiSpam.Check(antiSpamHeader, HttpContext))
             return BadRequest("Anti-spam check failed");
-        }
-        if (requestBody.Password.Length > 256) {
+        if (requestBody.Password.Length > 256)
             return BadRequest("Password cannot be longer than 256 characters");
-        }
-        
-        Program.StorageService!.GetUserFromName(requestBody.Username, out User? existingUser);
-        if (existingUser != null) {
+
+        if (userRepo.GetUserFromName(requestBody.Username) != null)
             return Conflict("User already exists");
-        }
+
         string passwordSalt = SerbleUtils.RandomString(64);
         User newUser = new() {
-            Username = requestBody.Username,
+            Username     = requestBody.Username,
             PasswordHash = (requestBody.Password + passwordSalt).Sha256Hash(),
             PasswordSalt = passwordSalt,
-            PermLevel = 1,
-            PermString = "0"
+            PermLevel    = 1
         };
-        Program.StorageService.AddUser(newUser, out User user);
-        Logger.Debug("User " + user.Username + " created");
-        return Ok(new SanitisedUser(user, "1", true)); // Ignore authed apps to stop error
+        newUser.WithRepos(userRepo);
+        userRepo.AddUser(newUser, out User user);
+        logger.LogDebug("User " + user.Username + " created");
+        return Ok(new SanitisedUser(user, "1", true));
     }
 
     [HttpPatch]
-    public Task<ActionResult<SanitisedUser>> EditAccount([FromHeader] SerbleAuthorizationHeader authorizationHeader, [FromBody] AccountEditRequest[] edits) {
-        if (!authorizationHeader.CheckAndGetInfo(out User target, out Dictionary<string, string> t, out SerbleAuthorizationHeaderType type, out string scopes, ScopeHandler.ScopesEnum.ManageAccount, false, Request)) {
-            return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
-        }
+    [Authorize(Policy = "Scope:ManageAccount")]
+    public Task<ActionResult<SanitisedUser>> EditAccount([FromBody] AccountEditRequest[] edits) {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
 
-        if (edits.Any(e => e.Field.ToLower() == "password") && type != SerbleAuthorizationHeaderType.User) {
+        if (edits.Any(e => e.Field.ToLower() == "password") && !HttpContext.User.IsUser())
             return Task.FromResult<ActionResult<SanitisedUser>>(Forbid());
-        }
+
+        Dictionary<string, string> t = LocalisationHandler.GetTranslations(
+            LocalisationHandler.GetPreferredLanguageOrDefault(Request, target));
+        string scopes = HttpContext.User.GetScopeString();
 
         string originalEmail = target.Email;
         User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
-            if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg)) {
+            if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg, userRepo))
                 return Task.FromResult<ActionResult<SanitisedUser>>(BadRequest(applyErrorMsg));
-            }
             newUser = modUser;
         }
-        
-        // Check for email change so we can send a confirmation email
-        Logger.Debug("Email from " + originalEmail + " to " + newUser.Email);
-        if (newUser.Email != originalEmail && newUser.Email != "") {
-            // Make sure the new email is not verified
+
+        logger.LogDebug("Email from " + originalEmail + " to " + newUser.Email);
+        if (newUser.Email != originalEmail && !string.IsNullOrWhiteSpace(newUser.Email)) {
             newUser.VerifiedEmail = false;
-            Logger.Debug("Sending email verification");
-            EmailConfirmationService.SendConfirmationEmail(newUser);
+            logger.LogDebug("Sending email verification");
+            emailConfirmation.SendConfirmationEmail(newUser);
 
-            // Send email to old email
-            string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged, LocalisationHandler.LanguageOrDefault(target));
-            body = body.Replace("{name}", target.Username);
-            body = body.Replace("{new_email}", newUser.Email);
-            body = body.Replace("{old_email}", originalEmail);
-            Email email = new(
-                originalEmail.ToSingleItemEnumerable().ToArray(), 
-                FromAddress.System, t["email-changed-subject"], 
-                body);
-            email.SendNonBlocking();  // Don't await so the thread can continue
+            if (!string.IsNullOrWhiteSpace(originalEmail)) {
+                logger.LogDebug("Sending email change notification to " + originalEmail);
+                string body = EmailSchemasService.GetEmailSchema(EmailSchema.EmailChanged, LocalisationHandler.LanguageOrDefault(target));
+                body = body.Replace("{name}", target.Username)
+                    .Replace("{new_email}", newUser.Email)
+                    .Replace("{old_email}", originalEmail);
+                Email email = new(logger, emailSettings.Value,
+                    originalEmail.ToSingleItemEnumerable().ToArray(),
+                    FromAddress.System, t["email-changed-subject"], body);
+                email.SendNonBlocking();
+            }
         }
-        
-        Program.StorageService!.UpdateUser(newUser);
 
+        userRepo.UpdateUser(newUser);
         return Task.FromResult<ActionResult<SanitisedUser>>(new SanitisedUser(target, scopes));
     }
-
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, DELETE, POST, PATCH, OPTIONS");
-        return Ok();
-    }
-    
 }
 
+// This is here because it is.
+// Don't remove it.
+// ReSharper disable once UnusedType.Global
 public class Adam {
-    public Adam() {
-        Logger.Error("OH NO U UNLEASHED ADAM");
-        throw new Exception("Adam");
-    }
+    public Adam() { throw new Exception("Adam"); }
 }

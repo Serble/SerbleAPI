@@ -36,15 +36,16 @@ public class TristanController : ControllerManager {
         return Ok("Why?");
     }
     
+    // OPTIONS are dead code, but these are kept
+    // because they're funny.
+    
     [HttpOptions]
     public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
         return Ok("Can I pick a different one?");
     }
     
     [HttpOptions("{cat:int}")]
     public ActionResult OptionsArg() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
         return Ok("Can I pick a different one?");
     }
     

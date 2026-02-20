@@ -1,8 +1,9 @@
 using System.Text.Json;
-using GeneralPurposeLib;
 
 namespace SerbleAPI.Data; 
 
+// TODO: Have this be a service and DI
+// TODO: Load products from regular config not custom one
 public static class ServicesStatusService {
     private static Service[]? _services;
     private static Service[]? _pingedServices;
@@ -23,7 +24,6 @@ public static class ServicesStatusService {
         if (!File.Exists(ConfigFileName)) {
             File.Create(ConfigFileName).Close();
             File.WriteAllText(ConfigFileName, JsonSerializer.Serialize(DefaultConfig, SerializerOptions));
-            Logger.Info("Config file created with default values");
             _services = DefaultConfig;
         }
         string json = File.ReadAllText(ConfigFileName);
@@ -31,11 +31,10 @@ public static class ServicesStatusService {
         try {
             outputArray = JsonSerializer.Deserialize<Service[]>(json);
             if (outputArray == null)
-                throw new InvalidConfigException("Config file is not valid JSON");
+                throw new Exception("Config file is not valid JSON");
         }
         catch (Exception ex) {
-            Logger.Debug(ex);
-            throw new InvalidConfigException("Config file is invalid: " + ex.Message);
+            throw new Exception("Config file is invalid: " + ex.Message);
         }
         _services = outputArray;
     }
@@ -81,7 +80,6 @@ public static class ServicesStatusService {
         
         _pingedServices = pingedServices;
         _lastUpdated = DateTime.Now;
-        Logger.Debug("Services statuses updated");
     }
 
 }

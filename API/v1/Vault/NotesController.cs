@@ -1,79 +1,53 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SerbleAPI.Data;
-using SerbleAPI.Data.ApiDataSchemas;
+using SerbleAPI.Authentication;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
 
-namespace SerbleAPI.API.v1.Vault; 
+namespace SerbleAPI.API.v1.Vault;
 
 [ApiController]
 [Route("api/v1/vault/notes")]
-public class NotesController : ControllerManager {
-    
-    [HttpGet]
-    public ActionResult<string[]> GetNotes([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
-            return Unauthorized();
-        }
-        
-        Program.StorageService!.GetUserNotes(user.Id, out string[] noteIds);
-        return Ok(noteIds);
-    }
-    
-    [HttpGet("{noteId}")]
-    public ActionResult<string> GetNoteContent([FromHeader] SerbleAuthorizationHeader authorizationHeader, string noteId) {
-        if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
-            return Unauthorized();
-        }
-        
-        Program.StorageService!.GetUserNoteContent(user.Id, noteId, out string? content);
-        return Ok(content);
-    }
-    
-    [HttpPost]
-    public ActionResult CreateNote([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
-            return Unauthorized();
-        }
+[Authorize(Policy = "Scope:Vault")]
+public class NotesController(IUserRepository userRepo, INoteRepository noteRepo) : ControllerManager {
 
-        string id = Guid.NewGuid().ToString();
-        Program.StorageService!.CreateUserNote(user.Id, id, "");
-        return Ok(new {
-            success = true,
-            note_id = id
-        });
+    [HttpGet]
+    public ActionResult<string[]> GetNotes() {
+        User? user = HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        return Ok(noteRepo.GetUserNotes(user.Id));
     }
-    
+
+    [HttpGet("{noteId}")]
+    public ActionResult<string> GetNoteContent(string noteId) {
+        User? user = HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        return Ok(noteRepo.GetUserNoteContent(user.Id, noteId));
+    }
+
+    [HttpPost]
+    public ActionResult CreateNote() {
+        User? user = HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        string id = Guid.NewGuid().ToString();
+        noteRepo.CreateUserNote(user.Id, id, "");
+        return Ok(new { success = true, note_id = id });
+    }
+
     [HttpPut("{noteId}")]
     [RequestSizeLimit(16_000_000)]
-    public ActionResult UpdateNoteContent([FromHeader] SerbleAuthorizationHeader authorizationHeader, string noteId, [FromBody] string body) {
-        if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
-            return Unauthorized();
-        }
-        
-        Program.StorageService!.UpdateUserNoteContent(user.Id, noteId, body);
+    public ActionResult UpdateNoteContent(string noteId, [FromBody] string body) {
+        User? user = HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        noteRepo.UpdateUserNoteContent(user.Id, noteId, body);
         return Ok();
     }
-    
+
     [HttpDelete("{noteId}")]
-    public ActionResult DeleteNoteContent([FromHeader] SerbleAuthorizationHeader authorizationHeader, string noteId) {
-        if (!authorizationHeader.CheckAndGetInfo(out User user, out _, ScopeHandler.ScopesEnum.Vault)) {
-            return Unauthorized();
-        }
-        
-        Program.StorageService!.DeleteUserNote(user.Id, noteId);
+    public ActionResult DeleteNoteContent(string noteId) {
+        User? user = HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        noteRepo.DeleteUserNote(user.Id, noteId);
         return Ok();
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, POST, OPTIONS");
-        return Ok();
-    }
-    
-    [HttpOptions("{noteId}")]
-    public ActionResult OptionsNoteId() {
-        HttpContext.Response.Headers.Add("Allow", "GET, PUT, DELETE, OPTIONS");
-        return Ok();
-    }
-    
 }

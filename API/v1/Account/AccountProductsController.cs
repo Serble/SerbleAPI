@@ -1,32 +1,21 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Authentication;
 using SerbleAPI.Data;
-using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
+using SerbleAPI.Repositories;
 
-namespace SerbleAPI.API.v1.Account; 
+namespace SerbleAPI.API.v1.Account;
 
 [Route("api/v1/account/products")]
 [Controller]
-public class AccountProductsController : ControllerManager {
-    
-    [HttpGet]
-    public ActionResult<SerbleProduct> Get([FromHeader] SerbleAuthorizationHeader authorizationHeader) {
-        if (!authorizationHeader.Check(out string? scopes, out SerbleAuthorizationHeaderType? authType, out string? _, out User target)) {
-            return Unauthorized();
-        }
+[Authorize(Policy = "Scope:PaymentInfo")]
+public class AccountProductsController(IUserRepository userRepo, IProductRepository productRepo) : ControllerManager {
 
-        ScopeHandler.ScopesEnum[] scopesEnums = ScopeHandler.ScopeStringToEnums(scopes).ToArray();
-        if (authType == SerbleAuthorizationHeaderType.App &&
-            !scopesEnums.Contains(ScopeHandler.ScopesEnum.PaymentInfo) && !scopesEnums.Contains(ScopeHandler.ScopesEnum.FullAccess)) {
-            return Forbid("Insufficient scope");
-        }
-        return Ok(ProductManager.ListOfProductsFromUser(target));
+    [HttpGet]
+    public ActionResult<SerbleProduct> Get() {
+        User? target = HttpContext.User.GetUser(userRepo);
+        if (target == null) return Unauthorized();
+        return Ok(ProductManager.ListOfProductsFromUser(target, productRepo));
     }
-    
-    [HttpOptions]
-    public ActionResult Options() {
-        HttpContext.Response.Headers.Add("Allow", "GET, OPTIONS");
-        return Ok();
-    }
-    
 }

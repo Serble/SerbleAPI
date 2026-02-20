@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Mail;
-using GeneralPurposeLib;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 
 namespace SerbleAPI.Data;
@@ -11,25 +11,34 @@ public class Email {
     public string From { get; }
     public string Subject { get; set; }
     public string Body { get; set; }
+    
+    public EmailSettings Settings { get; }
+    public ILogger Logger { get; }
 
-    public Email(IEnumerable<User> to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+    public Email(ILogger logger, EmailSettings settings, IEnumerable<User> to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+        Settings = settings;
+        Logger = logger;
+        
         To = to.Select(usr => usr.Email).ToArray();
         From = FromAddressEnumToString(from);
         Subject = subject;
         Body = body;
     }
 
-    public Email(string[] to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+    public Email(ILogger logger, EmailSettings settings, string[] to, FromAddress from = FromAddress.System, string subject = "", string body = "") {
+        Settings = settings;
+        Logger = logger;
+        
         To = to;
         From = FromAddressEnumToString(from);
         Subject = subject;
         Body = body;
     }
 
-    private static string FromAddressEnumToString(FromAddress address) {
+    private string FromAddressEnumToString(FromAddress address) {
         return address switch {
-            FromAddress.System => Program.Config!["EmailAddress_System"],
-            FromAddress.Newsletter => Program.Config!["EmailAddress_Newsletter"],
+            FromAddress.System => Settings.Addresses.System,
+            FromAddress.Newsletter => Settings.Addresses.Newsletter,
             _ => throw new InvalidEmailException("Invalid FromAddress")
         };
     }
@@ -43,7 +52,7 @@ public class Email {
             await GenerateClient().SendMailAsync(CollateMessage());
         }
         catch (Exception e) {
-            Logger.Error("Email failed to send: " + e);
+            Logger.LogError("Email failed to send: " + e);
         }
     }
 
@@ -52,14 +61,14 @@ public class Email {
             GenerateClient().Send(CollateMessage());
         }
         catch (Exception e) {
-            Logger.Error("Email failed to send: " + e);
+            Logger.LogError("Email failed to send: " + e);
         }
     }
 
-    private static SmtpClient GenerateClient() {
-        SmtpClient client = new (Program.Config!["smtp_host"]) {
-            Port = int.Parse(Program.Config!["smtp_port"]),
-            Credentials = new NetworkCredential(Program.Config["smtp_username"], Program.Config["smtp_password"]),
+    private SmtpClient GenerateClient() {
+        SmtpClient client = new (Settings.SmtpHost) {
+            Port = Settings.SmtpPort,
+            Credentials = new NetworkCredential(Settings.SmtpUsername, Settings.SmtpPassword),
             EnableSsl = true
         };
         return client;
@@ -88,6 +97,4 @@ public enum FromAddress {
     Newsletter
 }
 
-public class InvalidEmailException : Exception {
-    public InvalidEmailException(string message) : base(message) { }
-}
+public class InvalidEmailException(string message) : Exception(message);
