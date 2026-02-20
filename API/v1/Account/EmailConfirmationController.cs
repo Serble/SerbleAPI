@@ -13,13 +13,12 @@ public class EmailConfirmationController(IOptions<ApiSettings> apiSettings, ITok
     [HttpGet]
     public ActionResult Confirm([FromQuery] string token, [FromQuery] string? redirect = null, [FromQuery] string? failureRedirect = null) {
         if (!tokens.ValidateEmailConfirmationToken(token, out User user, out string email) || user.Email != email || user.VerifiedEmail) {
-            return Redirect(redirect ?? $"{apiSettings.Value.WebsiteUrl}/emailconfirm/error");
+            return Redirect(failureRedirect ?? $"{apiSettings.Value.WebsiteUrl}/emailconfirm/error");
         }
         
         user.VerifiedEmail = true;
         user.RegisterChanges();
         
-        return Redirect(failureRedirect ?? $"{apiSettings.Value.WebsiteUrl}/emailconfirm/success"); 
+        return Redirect(redirect ?? $"{apiSettings.Value.WebsiteUrl}/emailconfirm/success"); 
     }
-    
 }
