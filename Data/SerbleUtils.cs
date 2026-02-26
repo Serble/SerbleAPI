@@ -4,7 +4,7 @@ using System.Text;
 namespace SerbleAPI.Data; 
 
 public static class SerbleUtils {
-    private static Random _random = new Random();
+    private static Random _random = new();
     
     public static string Base64Encode(string plainText) =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));

@@ -3,15 +3,15 @@ using SerbleAPI.Data.Schemas;
 namespace SerbleAPI.Repositories;
 
 public interface IUserRepository {
-    User? GetUser(string userId);
-    User? GetUserFromName(string userName);
-    User? GetUserFromStripeCustomerId(string customerId);
-    void AddUser(User user, out User newUser);
-    void UpdateUser(User user);
-    void DeleteUser(string userId);
-    long CountUsers();
+    Task<User?> GetUser(string userId);
+    Task<User?> GetUserFromName(string userName);
+    Task<User?> GetUserFromStripeCustomerId(string customerId);
+    Task<User> AddUser(User user);
+    Task UpdateUser(User user);
+    Task DeleteUser(string userId);
+    Task<long> CountUsers();
 
-    void AddAuthorizedApp(string userId, AuthorizedApp app);
-    AuthorizedApp[] GetAuthorizedApps(string userId);
-    void DeleteAuthorizedApp(string userId, string appId);
+    Task AddAuthorizedApp(string userId, AuthorizedApp app);
+    Task<AuthorizedApp[]> GetAuthorizedApps(string userId);
+    Task DeleteAuthorizedApp(string userId, string appId);
 }

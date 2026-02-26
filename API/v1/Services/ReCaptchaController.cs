@@ -10,7 +10,6 @@ public class ReCaptchaController(IGoogleReCaptchaService reCaptchaService) : Con
 
     [HttpPost]
     public async Task<ActionResult<int>> Post([FromQuery] string token) {
-        
         // Verify
         GoogleReCaptchaResponse response = await reCaptchaService.VerifyReCaptcha(token);
         

@@ -22,19 +22,19 @@ public class AccountController(
     IEmailConfirmationService emailConfirmation) : ControllerManager {
 
     [HttpGet]
-    public ActionResult<SanitisedUser> Get() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<SanitisedUser>> Get() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
         return new SanitisedUser(target, HttpContext.User.GetScopeString());
     }
 
     [HttpDelete]
     [Authorize(Policy = "UserOnly")]
-    public ActionResult Delete() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult> Delete() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
 
-        userRepo.DeleteUser(target.Id);
+        await userRepo.DeleteUser(target.Id);
 
         if (!target.VerifiedEmail) return Ok();
 
@@ -55,7 +55,7 @@ public class AccountController(
         if (requestBody.Password.Length > 256)
             return BadRequest("Password cannot be longer than 256 characters");
 
-        if (userRepo.GetUserFromName(requestBody.Username) != null)
+        if (await userRepo.GetUserFromName(requestBody.Username) != null)
             return Conflict("User already exists");
 
         string passwordSalt = SerbleUtils.RandomString(64);
@@ -66,19 +66,19 @@ public class AccountController(
             PermLevel    = 1
         };
         newUser.WithRepos(userRepo);
-        userRepo.AddUser(newUser, out User user);
+        User user = await userRepo.AddUser(newUser);
         logger.LogDebug("User " + user.Username + " created");
         return Ok(new SanitisedUser(user, "1", true));
     }
 
     [HttpPatch]
     [Authorize(Policy = "Scope:ManageAccount")]
-    public Task<ActionResult<SanitisedUser>> EditAccount([FromBody] AccountEditRequest[] edits) {
-        User? target = HttpContext.User.GetUser(userRepo);
-        if (target == null) return Task.FromResult<ActionResult<SanitisedUser>>(Unauthorized());
+    public async Task<ActionResult<SanitisedUser>> EditAccount([FromBody] AccountEditRequest[] edits) {
+        User? target = await HttpContext.User.GetUser(userRepo);
+        if (target == null) return Unauthorized();
 
         if (edits.Any(e => e.Field.ToLower() == "password") && !HttpContext.User.IsUser())
-            return Task.FromResult<ActionResult<SanitisedUser>>(Forbid());
+            return Forbid();
 
         Dictionary<string, string> t = LocalisationHandler.GetTranslations(
             LocalisationHandler.GetPreferredLanguageOrDefault(Request, target));
@@ -87,9 +87,11 @@ public class AccountController(
         string originalEmail = target.Email;
         User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
-            if (!editRequest.TryApplyChanges(newUser, out User modUser, out string applyErrorMsg, userRepo))
-                return Task.FromResult<ActionResult<SanitisedUser>>(BadRequest(applyErrorMsg));
-            newUser = modUser;
+            try {
+                newUser = await editRequest.ApplyChanges(target, userRepo);
+            } catch (ArgumentException e) {
+                return BadRequest(e.Message);
+            }
         }
 
         logger.LogDebug("Email from " + originalEmail + " to " + newUser.Email);
@@ -111,8 +113,8 @@ public class AccountController(
             }
         }
 
-        userRepo.UpdateUser(newUser);
-        return Task.FromResult<ActionResult<SanitisedUser>>(new SanitisedUser(target, scopes));
+        await userRepo.UpdateUser(newUser);
+        return new SanitisedUser(target, scopes);
     }
 }
 

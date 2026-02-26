@@ -28,7 +28,7 @@ public class AuthController(
 
     [HttpGet("")]
     [HttpPost("password")]
-    public IActionResult PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader) {
+    public async Task<IActionResult> PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader) {
         if (authorizationHeader.IsNull()) return BadRequest("Authorization header is missing");
         if (!authorizationHeader.IsValid()) return BadRequest("Authorization header is invalid");
 
@@ -36,7 +36,7 @@ public class AuthController(
         string password = authorizationHeader.GetPassword();
         if (password.Length > 256) return BadRequest("Password cannot be longer than 256 characters");
 
-        User? user = userRepo.GetUserFromName(username);
+        User? user = await userRepo.GetUserFromName(username);
         if (user == null) return Unauthorized();
         if (!user.CheckPassword(password)) return Unauthorized();
 
@@ -64,24 +64,24 @@ public class AuthController(
 
             AssertionOptions? options = AssertionOptions.FromJson(jsonOptions);
 
-            SavedPasskey? creds = passkeyRepo.GetPasskey(clientResponse.Id);
+            SavedPasskey? creds = await passkeyRepo.GetPasskey(clientResponse.Id);
             if (creds == null) return BadRequest("Unknown passkey");
 
-            IsUserHandleOwnerOfCredentialIdAsync callback = (args, _) => {
-                SavedPasskey[] storedCreds = passkeyRepo.GetUsersPasskeys(Encoding.UTF8.GetString(args.UserHandle));
-                return Task.FromResult(storedCreds.Any(c => c.Descriptor!.Id.SequenceEqual(args.CredentialId)));
-            };
+            IsUserHandleOwnerOfCredentialIdAsync callback = (args, _) => 
+                passkeyRepo.GetUsersPasskeys(Encoding.UTF8.GetString(args.UserHandle))
+                .ContinueWith(t => t.Result.Any(c => c.Descriptor!.Id.SequenceEqual(args.CredentialId)), 
+                    cancellationToken);
 
             VerifyAssertionResult res = await fido.MakeAssertionAsync(
                 clientResponse, options,
                 creds.PublicKey!, creds.DevicePublicKeys ?? [], creds.SignCount,
                 callback, cancellationToken: cancellationToken);
 
-            passkeyRepo.SetPasskeySignCount(res.CredentialId, (int)res.SignCount);
+            await passkeyRepo.SetPasskeySignCount(res.CredentialId, (int)res.SignCount);
 
             if (res.DevicePublicKey is not null) {
                 byte[][] updatedKeys = (creds.DevicePublicKeys ?? []).Append(res.DevicePublicKey).ToArray();
-                passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
+                await passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
             }
 
             string token = tokens.GenerateLoginToken(creds.OwnerId!);
@@ -94,17 +94,17 @@ public class AuthController(
     }
 
     [HttpGet("passkey/assertionOptions")]
-    public ActionResult AssertionOptionsGet() => AssertionOptionsPost(null);
+    public Task<ActionResult> AssertionOptionsGet() => AssertionOptionsPost(null);
 
     [HttpPost("passkey/assertionOptions")]
-    public ActionResult AssertionOptionsPost([FromForm] string? username) {
+    public async Task<ActionResult> AssertionOptionsPost([FromForm] string? username) {
         try {
             List<PublicKeyCredentialDescriptor> existingCredentials = [];
 
             if (!string.IsNullOrEmpty(username)) {
-                User? user = userRepo.GetUserFromName(username);
+                User? user = await userRepo.GetUserFromName(username);
                 if (user == null) throw new Exception("Invalid user");
-                existingCredentials = passkeyRepo.GetUsersPasskeys(user.Id)
+                existingCredentials = (await passkeyRepo.GetUsersPasskeys(user.Id))
                     .Select(k => k.Descriptor!)
                     .ToList();
             }
@@ -122,7 +122,10 @@ public class AuthController(
             string challengeId = Guid.NewGuid().ToString("N");
             cache.Set($"fido2:assertion:{challengeId}", options.ToJson(), ChallengeExpiry);
 
-            return Json(new { challengeId, options });
+            return Json(new {
+                challengeId,
+                options
+            });
         }
         catch (Exception e) {
             return BadRequest(e.Message);

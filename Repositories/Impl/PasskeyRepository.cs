@@ -1,4 +1,5 @@
 using Fido2NetLib.Objects;
+using Microsoft.EntityFrameworkCore;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Models;
@@ -31,7 +32,7 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
 
     private static string CredId(byte[] credId) => Convert.ToBase64String(credId);
 
-    public void CreatePasskey(SavedPasskey key) {
+    public Task CreatePasskey(SavedPasskey key) {
         db.UserPasskeys.Add(new DbUserPasskey {
             OwnerId              = key.OwnerId,
             Name                 = key.Name,
@@ -42,60 +43,60 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
             AttesClientDataJson  = Convert.ToBase64String(key.AttestationClientDataJson!),
             DescriptorType       = key.Descriptor!.Type.GetIndex(),
             DescriptorId         = Convert.ToBase64String(key.Descriptor.Id),
-            DescriptorTransports = key.Descriptor.Transports == null ? 0 : key.Descriptor.Transports.ToBitmask(),
+            DescriptorTransports = key.Descriptor.Transports?.ToBitmask() ?? 0,
             AttesFormat          = key.AttestationFormat,
-            Transports           = key.Transports == null ? 0 : key.Transports.ToBitmask(),
+            Transports           = key.Transports?.ToBitmask() ?? 0,
             BackupEligible       = key.IsBackupEligible,
             BackedUp             = key.IsBackedUp,
             AttesObject          = Convert.ToBase64String(key.AttestationObject!),
             DevicePublicKeys     = key.DevicePublicKeys == null || key.DevicePublicKeys.Length == 0
                 ? "" : key.DevicePublicKeys.StringifyMda()
         });
-        db.SaveChanges();
+        return db.SaveChangesAsync();
     }
 
-    public SavedPasskey[] GetUsersPasskeys(string userId) =>
-        db.UserPasskeys
+    public async Task<SavedPasskey[]> GetUsersPasskeys(string userId) {
+        DbUserPasskey[] vals = await db.UserPasskeys
             .Where(p => p.OwnerId == userId)
-            .AsEnumerable()
-            .Select(Map)
-            .ToArray();
+            .ToArrayAsync();
+        return vals.Select(Map).ToArray();
+    }
 
-    public SavedPasskey? GetPasskey(byte[] credId) {
+    public async Task<SavedPasskey?> GetPasskey(byte[] credId) {
         string id = CredId(credId);
-        DbUserPasskey? row = db.UserPasskeys.FirstOrDefault(p => p.CredentialId == id);
+        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
         return row == null ? null : Map(row);
     }
 
-    public string? GetUserIdFromPasskeyId(byte[] credId) {
+    public async Task<string?> GetUserIdFromPasskeyId(byte[] credId) {
         string id = CredId(credId);
-        return db.UserPasskeys
+        return await db.UserPasskeys
             .Where(p => p.CredentialId == id)
             .Select(p => p.OwnerId)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
     }
 
-    public void SetPasskeySignCount(byte[] credId, int val) {
+    public async Task SetPasskeySignCount(byte[] credId, int val) {
         string id = CredId(credId);
-        DbUserPasskey? row = db.UserPasskeys.FirstOrDefault(p => p.CredentialId == id);
+        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
         if (row == null) return;
         row.SignCount = val;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public void DeletePasskey(byte[] credId) {
+    public async Task DeletePasskey(byte[] credId) {
         string id = CredId(credId);
-        DbUserPasskey? row = db.UserPasskeys.FirstOrDefault(p => p.CredentialId == id);
+        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
         if (row == null) return;
         db.UserPasskeys.Remove(row);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public void UpdatePasskeyDevicePublicKeys(byte[] credId, byte[][] devicePublicKeys) {
+    public async Task UpdatePasskeyDevicePublicKeys(byte[] credId, byte[][] devicePublicKeys) {
         string id = CredId(credId);
-        DbUserPasskey? row = db.UserPasskeys.FirstOrDefault(p => p.CredentialId == id);
+        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
         if (row == null) return;
         row.DevicePublicKeys = devicePublicKeys.StringifyMda();
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 }

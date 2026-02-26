@@ -21,10 +21,10 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
 
     [HttpGet("list")]
     [Authorize(Policy = "UserOnly")]
-    public IActionResult ListPasskeys() {
-        User? user = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> ListPasskeys() {
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
-        SavedPasskey[] keys = passkeyRepo.GetUsersPasskeys(user.Id);
+        SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(user.Id);
         return Json(keys.Select(k => new {
             name             = k.Name,
             credentialId     = Convert.ToBase64String(k.CredentialId!),
@@ -35,24 +35,24 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
 
     [HttpDelete("delete/{name}")]
     [Authorize(Policy = "UserOnly")]
-    public IActionResult DeletePasskey(string name) {
-        User? user = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> DeletePasskey(string name) {
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
-        SavedPasskey[] keys = passkeyRepo.GetUsersPasskeys(user.Id);
+        SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(user.Id);
         SavedPasskey? target = keys.FirstOrDefault(k => k.Name == name);
         if (target == null) return NotFound("Passkey not found");
-        passkeyRepo.DeletePasskey(target.CredentialId!);
+        await passkeyRepo.DeletePasskey(target.CredentialId!);
         return Ok(new { success = true });
     }
 
     [HttpPost("credentialoptions")]
     [Authorize(Policy = "UserOnly")]
-    public IActionResult MakeCredentialOptions(
+    public async Task<IActionResult> MakeCredentialOptions(
         [FromForm] string  attType,
         [FromForm] string? authType,
         [FromForm] string? userVerification) {
 
-        User? user = HttpContext.User.GetUser(userRepo);
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
 
         AuthenticatorSelection authenticatorSelection = new() {
@@ -75,8 +75,8 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
             Id          = Encoding.UTF8.GetBytes(user.Id)
         };
 
-        IReadOnlyList<PublicKeyCredentialDescriptor> excludeCreds = passkeyRepo
-            .GetUsersPasskeys(user.Id)
+        IReadOnlyList<PublicKeyCredentialDescriptor> excludeCreds = (await passkeyRepo
+                .GetUsersPasskeys(user.Id))
             .Select(k => k.Descriptor!)
             .Where(d => d != null!)
             .ToList();
@@ -112,8 +112,8 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
             CredentialCreateOptions? options = CredentialCreateOptions.FromJson(jsonOptions);
 
             IsCredentialIdUniqueToUserAsyncDelegate callback = (args, _) => {
-                string? userId = passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId);
-                return Task.FromResult(userId == null);
+                return passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId)
+                    .ContinueWith(t => t.Result == null, cancellationToken);
             };
 
             MakeNewCredentialResult success = await fido.MakeNewCredentialAsync(
@@ -139,7 +139,7 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
                     ? [success.Result.DevicePublicKey] : []
             };
 
-            passkeyRepo.CreatePasskey(cred);
+            await passkeyRepo.CreatePasskey(cred);
             return Json(new { success = true, credentialId = Convert.ToBase64String(cred.CredentialId!) });
         }
         catch (Exception e) {

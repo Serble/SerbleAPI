@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using SerbleAPI.Services;
 
 namespace SerbleAPI.Authentication;
@@ -9,7 +10,7 @@ namespace SerbleAPI.Authentication;
 /// <summary>
 /// Options bag for the Serble authentication scheme (no configuration needed).
 /// </summary>
-public class SerbleAuthenticationOptions : AuthenticationSchemeOptions { }
+public class SerbleAuthenticationOptions : AuthenticationSchemeOptions;
 
 /// <summary>
 /// Custom ASP.NET authentication handler that supports two header formats:
@@ -37,12 +38,13 @@ public class SerbleAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync() {
         // Primary: custom SerbleAuth header
-        if (Request.Headers.TryGetValue("SerbleAuth", out var serbleAuthValues))
+        if (Request.Headers.TryGetValue("SerbleAuth", out StringValues serbleAuthValues))
             return Task.FromResult(HandleSerbleAuthHeader(serbleAuthValues.ToString()));
 
         // Secondary: standard Authorization header
-        if (Request.Headers.TryGetValue("Authorization", out var authValues))
+        if (Request.Headers.TryGetValue("Authorization", out StringValues authValues)) {
             return Task.FromResult(HandleAuthorizationHeader(authValues.ToString()));
+        }
 
         return Task.FromResult(AuthenticateResult.NoResult());
     }
@@ -61,12 +63,14 @@ public class SerbleAuthenticationHandler(
 
     private AuthenticateResult HandleAuthorizationHeader(string header) {
         string[] parts = header.Split(' ', 2);
-        if (parts.Length != 2)
+        if (parts.Length != 2) {
             return AuthenticateResult.NoResult();
+        }
 
         // Only intercept Bearer tokens; Basic auth is handled by the password endpoint
-        if (!parts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase))
+        if (!parts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase)) {
             return AuthenticateResult.NoResult();
+        }
 
         string token = parts[1];
 
@@ -76,31 +80,32 @@ public class SerbleAuthenticationHandler(
     }
 
     private AuthenticateResult AuthenticateAsUser(string token) {
-        if (!tokens.ValidateLoginToken(token, out var user) || user == null)
+        if (!tokens.ValidateLoginToken(token, out string? userId)) {
             return AuthenticateResult.Fail("Invalid user token");
+        }
 
         return BuildTicket([
-            new Claim("userid",    user.Id),
+            new Claim("userid",    userId!),
             new Claim("auth_type", "User"),
             new Claim("scope",     "1")  // User tokens always carry full_access
         ]);
     }
 
     private AuthenticateResult AuthenticateAsApp(string token) {
-        if (!tokens.ValidateAccessToken(token, out var appUser, out string scope) || appUser == null)
+        if (!tokens.ValidateAccessToken(token, out string? appUserId, out string scope))
             return AuthenticateResult.Fail("Invalid app access token");
 
         return BuildTicket([
-            new Claim("userid",    appUser.Id),
+            new Claim("userid",    appUserId!),
             new Claim("auth_type", "App"),
             new Claim("scope",     scope)
         ]);
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {
-        var identity  = new ClaimsIdentity(claims, Scheme.Name);
-        var principal = new ClaimsPrincipal(identity);
-        var ticket    = new AuthenticationTicket(principal, Scheme.Name);
+        ClaimsIdentity identity = new(claims, Scheme.Name);
+        ClaimsPrincipal principal = new(identity);
+        AuthenticationTicket ticket = new(principal, Scheme.Name);
         return AuthenticateResult.Success(ticket);
     }
 }
