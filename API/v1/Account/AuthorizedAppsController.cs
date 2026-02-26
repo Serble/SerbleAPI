@@ -22,7 +22,7 @@ public class AuthorizedAppsController(
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
         await target.ObtainAuthorizedApps();
-        return target.AuthorizedApps;
+        return await target.GetAuthorizedApps();
     }
 
     [HttpPost]
@@ -44,7 +44,8 @@ public class AuthorizedAppsController(
         User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
 
-        if (user.AuthorizedApps.All(a => a.AppId != appId)) {
+        AuthorizedApp[] authedApps = await user.GetAuthorizedApps();
+        if (authedApps.All(a => a.AppId != appId)) {
             return BadRequest("App is not authorized");
         }
 

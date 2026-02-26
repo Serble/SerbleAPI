@@ -25,23 +25,13 @@ public class User {
     public bool TotpEnabled { get; set; }
     public string? TotpSecret { get; set; }  // 128 bytes
     public string? PasswordSalt { get; set; }  // 64 bytes, null for people who registered before this was added
-    
-    public AuthorizedApp[] AuthorizedApps {
-        get {
-            if (_obtainedAuthedApps != null) return _obtainedAuthedApps;
-            ObtainAuthorizedApps().Wait();  // TODO: The whole way this works needs to be reworked
-            return _obtainedAuthedApps!;
-        }
-        set {
-            if (_obtainedAuthedApps == null) ObtainAuthorizedApps().Wait();  // TODO: The whole way this works needs to be reworked
-            _obtainedAuthedApps = value;
-        }
-    }
 
     private AuthorizedApp[]? _obtainedAuthedApps;
     private AuthorizedApp[]? _originalAuthedApps;
 
-    public IEnumerable<string> AuthorizedAppIds => AuthorizedApps.Select(x => x.AppId).ToArray();
+    public async Task<IEnumerable<string>> GetAuthorizedAppIds() {
+        return (await GetAuthorizedApps()).Select(x => x.AppId).ToArray();
+    }
     
     public User() {
         Id = "";
@@ -54,6 +44,12 @@ public class User {
         TotpEnabled = false;
         _originalAuthedApps = [];
         StripeCustomerId = null;
+    }
+    
+    public async Task<AuthorizedApp[]> GetAuthorizedApps() {
+        if (_obtainedAuthedApps != null) return _obtainedAuthedApps;
+        await ObtainAuthorizedApps();
+        return _obtainedAuthedApps!;
     }
     
     public bool CheckPassword(string password) {
@@ -84,7 +80,8 @@ public class User {
 
     public async Task AuthorizeApp(AuthorizedApp app) {
         // If the app is already authorised, delete it first
-        foreach (AuthorizedApp authedApp in AuthorizedApps.Where(oa => oa.AppId == app.AppId)) {
+        AuthorizedApp[] authedApps = await GetAuthorizedApps();
+        foreach (AuthorizedApp authedApp in authedApps.Where(oa => oa.AppId == app.AppId)) {
             await _userRepo!.DeleteAuthorizedApp(Id, authedApp.AppId);
         }
         await _userRepo!.AddAuthorizedApp(Id, app);

@@ -111,9 +111,9 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
 
             CredentialCreateOptions? options = CredentialCreateOptions.FromJson(jsonOptions);
 
-            IsCredentialIdUniqueToUserAsyncDelegate callback = (args, _) => {
-                return passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId)
-                    .ContinueWith(t => t.Result == null, cancellationToken);
+            IsCredentialIdUniqueToUserAsyncDelegate callback = async (args, _) => {
+                string? userId = await passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId);
+                return userId == null;
             };
 
             MakeNewCredentialResult success = await fido.MakeNewCredentialAsync(

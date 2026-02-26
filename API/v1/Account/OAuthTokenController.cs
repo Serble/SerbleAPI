@@ -76,7 +76,8 @@ public class OAuthTokenController(
             return BadRequest("Invalid grant_type, must be 'authorization_code'");
         }
         
-        if (user.AuthorizedApps.All(authorizedApp => authorizedApp.AppId != client_id)) {
+        AuthorizedApp[] authedApps = await user.GetAuthorizedApps();
+        if (authedApps.All(authorizedApp => authorizedApp.AppId != client_id)) {
             return BadRequest("App is not authorized");
         }
 

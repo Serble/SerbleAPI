@@ -15,14 +15,18 @@ public class NotesController(IUserRepository userRepo, INoteRepository noteRepo)
     public async Task<ActionResult<string[]>> GetNotes() {
         User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
-        return Ok(noteRepo.GetUserNotes(user.Id));
+
+        string[] notes = await noteRepo.GetUserNotes(user.Id);
+        return Ok(notes);
     }
 
     [HttpGet("{noteId}")]
     public async Task<ActionResult<string>> GetNoteContent(string noteId) {
         User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
-        return Ok(noteRepo.GetUserNoteContent(user.Id, noteId));
+
+        string? content = await noteRepo.GetUserNoteContent(user.Id, noteId);
+        return Ok(content);
     }
 
     [HttpPost]

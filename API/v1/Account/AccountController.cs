@@ -25,7 +25,7 @@ public class AccountController(
     public async Task<ActionResult<SanitisedUser>> Get() {
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        return new SanitisedUser(target, HttpContext.User.GetScopeString());
+        return await SanitisedUser.Create(target, HttpContext.User.GetScopeString());
     }
 
     [HttpDelete]
@@ -68,7 +68,7 @@ public class AccountController(
         newUser.WithRepos(userRepo);
         User user = await userRepo.AddUser(newUser);
         logger.LogDebug("User " + user.Username + " created");
-        return Ok(new SanitisedUser(user, "1", true));
+        return Ok(await SanitisedUser.Create(user, "1", true));
     }
 
     [HttpPatch]
@@ -88,7 +88,7 @@ public class AccountController(
         User newUser = target;
         foreach (AccountEditRequest editRequest in edits) {
             try {
-                newUser = await editRequest.ApplyChanges(target, userRepo);
+                newUser = await editRequest.ApplyChanges(newUser, userRepo);
             } catch (ArgumentException e) {
                 return BadRequest(e.Message);
             }
@@ -114,7 +114,7 @@ public class AccountController(
         }
 
         await userRepo.UpdateUser(newUser);
-        return new SanitisedUser(target, scopes);
+        return await SanitisedUser.Create(newUser, scopes);
     }
 }
 
