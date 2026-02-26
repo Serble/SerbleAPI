@@ -13,57 +13,71 @@ namespace SerbleAPI.API.v1.Account;
 public class OAuthTokenController(
     ILogger<OAuthTokenController> logger,
     ITokenService tokens,
-    IAppRepository appRepo) : ControllerManager {
+    IAppRepository appRepo,
+    IUserRepository users) : ControllerManager {
 
     [HttpPost("refresh")]
-    public ActionResult<AccessTokenResponse> RequestTokens(
+    public async Task<ActionResult<AccessTokenResponse>> RequestTokens(
         [FromQuery] string code,
         [FromQuery] string client_id,
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
         logger.LogDebug("Validating oauth code: " + code);
-        if (!tokens.ValidateAuthorizationToken(code, client_id, out User? user, out string scope, out string reason)) {
+        if (!tokens.ValidateAuthorizationToken(code, client_id, out string? userId, out string scope, out string reason)) {
             return BadRequest("Invalid authorization code: " + reason);
         }
-        OAuthApp? app = appRepo.GetOAuthApp(client_id);
+        
+        OAuthApp? app = await appRepo.GetOAuthApp(client_id);
         if (app == null) {
             return BadRequest("Invalid client_id");
         }
+        
         if (app.ClientSecret != client_secret) {
             return BadRequest("Invalid client_secret");
         }
+        
         if (grant_type != "authorization_code") {
             return BadRequest("Invalid grant_type, must be 'authorization_code'");
         }
 
         return Ok(new AccessTokenResponse {
             ExpiresIn = 87600,
-            AccessToken = tokens.GenerateAccessToken(user!.Id, scope),
-            RefreshToken = tokens.GenerateRefreshToken(user.Id, client_id, scope),
+            AccessToken = tokens.GenerateAccessToken(userId!, scope),
+            RefreshToken = tokens.GenerateRefreshToken(userId!, client_id, scope),
             TokenType = "bearer"
         });
     }
     
     [HttpPost("access")]
-    public ActionResult<AccessTokenResponse> RequestAccess(
+    public async Task<ActionResult<AccessTokenResponse>> RequestAccess(
         [FromQuery] string refresh_token,
         [FromQuery] string client_id,
         [FromQuery] string client_secret,
         [FromQuery] string grant_type) {
-        if (!tokens.ValidateRefreshToken(refresh_token, client_id, out User? user, out string scope)) {
+        if (!tokens.ValidateRefreshToken(refresh_token, client_id, out string? userId, out string scope)) {
             return BadRequest("Invalid authorization code");
         }
-        OAuthApp? app = appRepo.GetOAuthApp(client_id);
+        
+        User? user = await users.GetUser(userId!);
+        if (user == null) {
+            return BadRequest("User not found");
+        }
+        
+        OAuthApp? app = await appRepo.GetOAuthApp(client_id);
         if (app == null) {
             return BadRequest("Invalid client_id");
         }
+        
         if (app.ClientSecret != client_secret) {
             return BadRequest("Invalid client_secret");
         }
+        
         if (grant_type != "authorization_code") {
             return BadRequest("Invalid grant_type, must be 'authorization_code'");
         }
-        if (user!.AuthorizedApps.All(authorizedApp => authorizedApp.AppId != client_id)) {
+        
+        AuthorizedApp[] authedApps = await user.GetAuthorizedApps();
+        if (authedApps.All(authorizedApp => authorizedApp.AppId != client_id)) {
             return BadRequest("App is not authorized");
         }
 

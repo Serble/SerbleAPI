@@ -13,9 +13,9 @@ namespace SerbleAPI.API.v1.Account;
 public class AccountProductsController(IUserRepository userRepo, IProductRepository productRepo) : ControllerManager {
 
     [HttpGet]
-    public ActionResult<SerbleProduct> Get() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<SerbleProduct[]>> Get() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        return Ok(ProductManager.ListOfProductsFromUser(target, productRepo));
+        return Ok(await ProductManager.ListOfProductsFromUser(target, productRepo));
     }
 }

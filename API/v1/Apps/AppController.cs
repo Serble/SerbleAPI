@@ -15,18 +15,18 @@ public class AppController(IAppRepository appRepo, IUserRepository userRepo) : C
     // Public endpoint — no auth required
     [HttpGet("{appid}/public")]
     [AllowAnonymous]
-    public IActionResult GetPublicInfo(string appid) {
-        OAuthApp? app = appRepo.GetOAuthApp(appid);
+    public async Task<IActionResult> GetPublicInfo(string appid) {
+        OAuthApp? app = await appRepo.GetOAuthApp(appid);
         if (app == null) return NotFound();
         return Ok(JsonConvert.SerializeObject(new SanitisedOAuthApp(app)));
     }
 
     [HttpGet("{appid}")]
     [Authorize(Policy = "Scope:ManageApps")]
-    public IActionResult GetInfo(string appid) {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> GetInfo(string appid) {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        OAuthApp? app = appRepo.GetOAuthApp(appid);
+        OAuthApp? app = await appRepo.GetOAuthApp(appid);
         if (app == null) return NotFound();
         if (target.Id != app.OwnerId) return BadRequest("User does not own app");
         return Ok(JsonConvert.SerializeObject(app));
@@ -34,31 +34,31 @@ public class AppController(IAppRepository appRepo, IUserRepository userRepo) : C
 
     [HttpGet]
     [Authorize(Policy = "Scope:ManageApps")]
-    public IActionResult GetAll() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> GetAll() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        OAuthApp[] apps = appRepo.GetOAuthAppsFromUser(target.Id);
+        OAuthApp[] apps = await appRepo.GetOAuthAppsFromUser(target.Id);
         return Ok(JsonConvert.SerializeObject(apps));
     }
 
     [HttpDelete("{appid}")]
     [Authorize(Policy = "Scope:ManageApps")]
-    public IActionResult Delete(string appid) {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> Delete(string appid) {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        OAuthApp? app = appRepo.GetOAuthApp(appid);
+        OAuthApp? app = await appRepo.GetOAuthApp(appid);
         if (app == null) return NotFound();
         if (target.Id != app.OwnerId) return Forbid("User does not own app");
-        appRepo.DeleteOAuthApp(appid);
+        await appRepo.DeleteOAuthApp(appid);
         return Ok();
     }
 
     [HttpPost]
     [Authorize(Policy = "Scope:ManageApps")]
-    public IActionResult CreateApp([FromBody] NewOAuthApp app) {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> CreateApp([FromBody] NewOAuthApp app) {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        appRepo.AddOAuthApp(new OAuthApp(target.Id) {
+        await appRepo.AddOAuthApp(new OAuthApp(target.Id) {
             Description = app.Description,
             Name        = app.Name,
             RedirectUri = app.RedirectUri
@@ -68,10 +68,10 @@ public class AppController(IAppRepository appRepo, IUserRepository userRepo) : C
 
     [HttpPatch("{appid}")]
     [Authorize(Policy = "Scope:AppsControl")]
-    public ActionResult<OAuthApp> EditApp([FromBody] AppEditRequest[] edits, string appid) {
-        User? user = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<OAuthApp>> EditApp([FromBody] AppEditRequest[] edits, string appid) {
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
-        OAuthApp? target = appRepo.GetOAuthApp(appid);
+        OAuthApp? target = await appRepo.GetOAuthApp(appid);
         if (target == null) return NotFound();
 
         OAuthApp newApp = target;
@@ -80,7 +80,7 @@ public class AppController(IAppRepository appRepo, IUserRepository userRepo) : C
                 return BadRequest(applyErrorMsg);
             newApp = modApp;
         }
-        appRepo.UpdateOAuthApp(newApp);
+        await appRepo.UpdateOAuthApp(newApp);
         return newApp;
     }
 }

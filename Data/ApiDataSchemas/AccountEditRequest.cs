@@ -13,14 +13,14 @@ public class AccountEditRequest {
         NewValue = newValue;
     }
 
-    private User ApplyChanges(User target, IUserRepository userRepo) {
+    public async Task<User> ApplyChanges(User target, IUserRepository userRepo) {
         switch (Field.ToLower()) {
             case "username":
                 // Check if username is taken
                 if (NewValue == "") {
                     throw new ArgumentException("Username cannot be empty");
                 }
-                User? existingUser = userRepo.GetUserFromName(NewValue);
+                User? existingUser = await userRepo.GetUserFromName(NewValue);
                 if (existingUser != null) {
                     throw new ArgumentException("Username is already taken");
                 }
@@ -71,17 +71,4 @@ public class AccountEditRequest {
         }
         return target;
     }
-    
-    public bool TryApplyChanges(User target, out User newUser, out string msg, IUserRepository userRepo) {
-        try {
-            newUser = ApplyChanges(target, userRepo);
-            msg = "Success";
-            return true;
-        } catch (ArgumentException e) {
-            msg = e.Message;
-            newUser = target;
-            return false;
-        }
-    }
-    
 }

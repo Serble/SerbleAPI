@@ -1,37 +1,38 @@
+using Microsoft.EntityFrameworkCore;
 using SerbleAPI.Models;
 
 namespace SerbleAPI.Repositories.Impl;
 
 public class NoteRepository(SerbleDbContext db) : INoteRepository {
 
-    public string[] GetUserNotes(string userId) =>
+    public Task<string[]> GetUserNotes(string userId) =>
         db.UserNotes
             .Where(n => n.User == userId)
             .Select(n => n.NoteId!)
-            .ToArray();
+            .ToArrayAsync();
 
-    public void CreateUserNote(string userId, string noteId, string content) {
+    public Task CreateUserNote(string userId, string noteId, string content) {
         db.UserNotes.Add(new DbUserNote { User = userId, NoteId = noteId, Note = content });
-        db.SaveChanges();
+        return db.SaveChangesAsync();
     }
 
-    public void UpdateUserNoteContent(string userId, string noteId, string content) {
-        DbUserNote? row = db.UserNotes.FirstOrDefault(n => n.User == userId && n.NoteId == noteId);
+    public async Task UpdateUserNoteContent(string userId, string noteId, string content) {
+        DbUserNote? row = await db.UserNotes.FirstOrDefaultAsync(n => n.User == userId && n.NoteId == noteId);
         if (row == null) return;
         row.Note = content;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public string? GetUserNoteContent(string userId, string noteId) =>
+    public Task<string?> GetUserNoteContent(string userId, string noteId) =>
         db.UserNotes
             .Where(n => n.User == userId && n.NoteId == noteId)
             .Select(n => n.Note)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
-    public void DeleteUserNote(string userId, string noteId) {
-        DbUserNote? row = db.UserNotes.FirstOrDefault(n => n.User == userId && n.NoteId == noteId);
+    public async Task DeleteUserNote(string userId, string noteId) {
+        DbUserNote? row = await db.UserNotes.FirstOrDefaultAsync(n => n.User == userId && n.NoteId == noteId);
         if (row == null) return;
         db.UserNotes.Remove(row);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 }

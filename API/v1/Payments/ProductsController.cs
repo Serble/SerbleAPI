@@ -12,9 +12,9 @@ namespace SerbleAPI.API.v1.Payments;
 public class ProductsController(IUserRepository userRepo, IProductRepository productRepo) : ControllerManager {
 
     [HttpGet]
-    public ActionResult<string[]> Get() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<string[]>> Get() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        return productRepo.GetOwnedProducts(target.Id);
+        return await productRepo.GetOwnedProducts(target.Id);
     }
 }

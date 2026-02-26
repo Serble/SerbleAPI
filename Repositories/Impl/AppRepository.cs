@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Models;
 
@@ -13,19 +14,19 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         RedirectUri  = r.RedirectUri  ?? ""
     };
 
-    public OAuthApp? GetOAuthApp(string appId) {
-        DbApp? row = db.Apps.FirstOrDefault(a => a.Id == appId);
+    public async Task<OAuthApp?> GetOAuthApp(string appId) {
+        DbApp? row = await db.Apps.FirstOrDefaultAsync(a => a.Id == appId);
         return row == null ? null : Map(row);
     }
 
-    public OAuthApp[] GetOAuthAppsFromUser(string userId) =>
-        db.Apps
+    public async Task<OAuthApp[]> GetOAuthAppsFromUser(string userId) {
+        DbApp[] vals = await db.Apps
             .Where(a => a.OwnerId == userId)
-            .AsEnumerable()
-            .Select(Map)
-            .ToArray();
+            .ToArrayAsync();
+        return vals.Select(Map).ToArray();
+    }
 
-    public void AddOAuthApp(OAuthApp app) {
+    public Task AddOAuthApp(OAuthApp app) {
         db.Apps.Add(new DbApp {
             Id           = app.Id,
             OwnerId      = app.OwnerId,
@@ -34,24 +35,24 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
             ClientSecret = app.ClientSecret,
             RedirectUri  = app.RedirectUri
         });
-        db.SaveChanges();
+        return db.SaveChangesAsync();
     }
 
-    public void UpdateOAuthApp(OAuthApp app) {
-        DbApp? row = db.Apps.FirstOrDefault(a => a.Id == app.Id);
+    public async Task UpdateOAuthApp(OAuthApp app) {
+        DbApp? row = await db.Apps.FirstOrDefaultAsync(a => a.Id == app.Id);
         if (row == null) return;
         row.OwnerId      = app.OwnerId;
         row.Name         = app.Name;
         row.Description  = app.Description;
         row.ClientSecret = app.ClientSecret;
         row.RedirectUri  = app.RedirectUri;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public void DeleteOAuthApp(string appId) {
-        DbApp? row = db.Apps.FirstOrDefault(a => a.Id == appId);
+    public async Task DeleteOAuthApp(string appId) {
+        DbApp? row = await db.Apps.FirstOrDefaultAsync(a => a.Id == appId);
         if (row == null) return;
         db.Apps.Remove(row);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 }

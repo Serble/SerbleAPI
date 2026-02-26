@@ -6,7 +6,7 @@ namespace SerbleAPI.Repositories.Impl;
 
 public class UserRepository(SerbleDbContext db) : IUserRepository {
 
-    // ── Mapping helpers ───────────────────────────────────────────────────────
+    // Mapping helpers
 
     private static User Map(DbUser r) => new() {
         Id              = r.Id,
@@ -21,25 +21,32 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         TotpSecret      = r.TotpSecret,
         PasswordSalt    = r.PasswordSalt
     };
-
-    // ── Users ─────────────────────────────────────────────────────────────────
-
-    public User? GetUser(string userId) {
-        DbUser? row = db.Users.Find(userId);
-        return row == null ? null : Map(row);
+    
+    private User? MapWithRepos(DbUser? r) {
+        if (r == null) return null;
+        User user = Map(r);
+        user.WithRepos(this);
+        return user;
     }
 
-    public User? GetUserFromName(string userName) {
-        DbUser? row = db.Users.FirstOrDefault(u => u.Username == userName);
-        return row == null ? null : Map(row);
+    // Users
+
+    public async Task<User?> GetUser(string userId) {
+        DbUser? row = await db.Users.FindAsync(userId);
+        return MapWithRepos(row);
     }
 
-    public User? GetUserFromStripeCustomerId(string customerId) {
-        DbUser? row = db.Users.FirstOrDefault(u => u.SubscriptionId == customerId);
-        return row == null ? null : Map(row);
+    public async Task<User?> GetUserFromName(string userName) {
+        DbUser? row = await db.Users.FirstOrDefaultAsync(u => u.Username == userName);
+        return MapWithRepos(row);
     }
 
-    public void AddUser(User user, out User newUser) {
+    public async Task<User?> GetUserFromStripeCustomerId(string customerId) {
+        DbUser? row = await db.Users.FirstOrDefaultAsync(u => u.SubscriptionId == customerId);
+        return MapWithRepos(row);
+    }
+
+    public async Task<User> AddUser(User user) {
         user.Id = Guid.NewGuid().ToString();
         db.Users.Add(new DbUser {
             Id             = user.Id,
@@ -54,12 +61,12 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             TotpSecret     = user.TotpSecret,
             PasswordSalt   = user.PasswordSalt
         });
-        db.SaveChanges();
-        newUser = user;
+        await db.SaveChangesAsync();
+        return user;
     }
 
-    public void UpdateUser(User user) {
-        DbUser? row = db.Users.Find(user.Id);
+    public async Task UpdateUser(User user) {
+        DbUser? row = await db.Users.FindAsync(user.Id);
         if (row == null) return;
         row.Username       = user.Username;
         row.Email          = user.Email;
@@ -71,44 +78,44 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         row.TotpEnabled    = user.TotpEnabled;
         row.TotpSecret     = user.TotpSecret;
         row.PasswordSalt   = user.PasswordSalt;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public void DeleteUser(string userId) {
-        DbUser? row = db.Users.Find(userId);
+    public async Task DeleteUser(string userId) {
+        DbUser? row = await db.Users.FindAsync(userId);
         if (row == null) return;
-        // Cascade: remove authorized apps too
-        db.UserAuthorizedApps.Where(a => a.UserId == userId).ExecuteDelete();
+        // remove authorised apps too
+        await db.UserAuthorizedApps.Where(a => a.UserId == userId).ExecuteDeleteAsync();
         db.Users.Remove(row);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public long CountUsers() => db.Users.LongCount();
+    public Task<long> CountUsers() => db.Users.LongCountAsync();
 
-    // ── Authorized apps ───────────────────────────────────────────────────────
+    // Authorised apps
 
-    public void AddAuthorizedApp(string userId, AuthorizedApp app) {
+    public async Task AddAuthorizedApp(string userId, AuthorizedApp app) {
         // Remove existing entry for same app so we can replace it cleanly
-        db.UserAuthorizedApps
+        await db.UserAuthorizedApps
             .Where(a => a.UserId == userId && a.AppId == app.AppId)
-            .ExecuteDelete();
+            .ExecuteDeleteAsync();
         db.UserAuthorizedApps.Add(new DbUserAuthorizedApp {
             UserId = userId,
             AppId  = app.AppId,
             Scopes = app.Scopes
         });
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public AuthorizedApp[] GetAuthorizedApps(string userId) =>
+    public Task<AuthorizedApp[]> GetAuthorizedApps(string userId) =>
         db.UserAuthorizedApps
             .Where(a => a.UserId == userId)
             .Select(a => new AuthorizedApp(a.AppId!, a.Scopes!))
-            .ToArray();
+            .ToArrayAsync();
 
-    public void DeleteAuthorizedApp(string userId, string appId) {
-        db.UserAuthorizedApps
+    public Task DeleteAuthorizedApp(string userId, string appId) {
+        return db.UserAuthorizedApps
             .Where(a => a.UserId == userId && a.AppId == appId)
-            .ExecuteDelete();
+            .ExecuteDeleteAsync();
     }
 }

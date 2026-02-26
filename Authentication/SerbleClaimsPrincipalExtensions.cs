@@ -45,10 +45,10 @@ public static class SerbleClaimsPrincipalExtensions {
     /// principal, with IUserRepository injected so User instance methods work.
     /// Requires the <paramref name="httpContext"/> to resolve the scoped repo.
     /// </summary>
-    public static User? GetUser(this ClaimsPrincipal p, IUserRepository userRepo) {
+    public static async Task<User?> GetUser(this ClaimsPrincipal p, IUserRepository userRepo) {
         string? userId = p.GetUserId();
         if (userId == null) return null;
-        User? user = userRepo.GetUser(userId);
+        User? user = await userRepo.GetUser(userId);
         return user?.WithRepos(userRepo);
     }
 }

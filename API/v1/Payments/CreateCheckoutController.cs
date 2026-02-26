@@ -22,8 +22,8 @@ public class CreateCheckoutController(
 
     [HttpPost("checkout")]
     [Authorize(Policy = "Scope:PaymentInfo")]
-    public ActionResult<dynamic> CreateCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<dynamic>> CreateCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) {
             return Unauthorized();
         }
@@ -37,15 +37,15 @@ public class CreateCheckoutController(
             return NotFound("Invalid product ID: " + e.Message);
         }
 
-        StripeList<Price> prices = new PriceService().List(new PriceListOptions {
+        StripeList<Price> prices = await new PriceService().ListAsync(new PriceListOptions {
             LookupKeys = lookupKeys.ToList()
         });
         if (!prices.Any()) {
             return BadRequest("No valid items were provided");
         }
 
-        target.EnsureStripeCustomer();
-        Session session = new SessionService().Create(new SessionCreateOptions {
+        await target.EnsureStripeCustomer();
+        Session session = await new SessionService().CreateAsync(new SessionCreateOptions {
             LineItems = [
                 new SessionLineItemOptions {
                     Price = prices.Data[0].Id, Quantity = 1
@@ -58,20 +58,26 @@ public class CreateCheckoutController(
             Customer = target.StripeCustomerId
         });
         Response.Headers.Append("Location", session.Url);
-        return new { url = session.Url };
+        return new {
+            url = session.Url
+        };
     }
 
     // Anonymous checkout — no user account needed
     [HttpPost("checkoutanon")]
     [AllowAnonymous]
-    public ActionResult<dynamic> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
+    public async Task<ActionResult<dynamic>> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
         string domain = apiSettings.Value.WebsiteUrl;
         string[] lookupKeys;
         List<SerbleProduct> prods;
-        try { lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods); }
-        catch (KeyNotFoundException e) { return NotFound("Invalid product ID: " + e.Message); }
+        try {
+            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods);
+        }
+        catch (KeyNotFoundException e) {
+            return NotFound("Invalid product ID: " + e.Message);
+        }
 
-        StripeList<Price> prices = new PriceService().List(new PriceListOptions { LookupKeys = lookupKeys.ToList() });
+        StripeList<Price> prices = await new PriceService().ListAsync(new PriceListOptions { LookupKeys = lookupKeys.ToList() });
         if (!prices.Any()) return BadRequest("No valid items were provided");
 
         string surl = domain + "/store/success?session_id={CHECKOUT_SESSION_ID}";
@@ -79,7 +85,7 @@ public class CreateCheckoutController(
             string tok = tokens.GenerateCheckoutSuccessToken(prods.Single().Id, prods.Single().SuccessTokenSecret!);
             surl = prods.Single().SuccessRedirect!.Replace("{token}", tok);
         }
-        Session session = new SessionService().Create(new SessionCreateOptions {
+        Session session = await new SessionService().CreateAsync(new SessionCreateOptions {
             LineItems = [new SessionLineItemOptions { Price = prices.Data[0].Id, Quantity = 1 }],
             Mode = mode, SuccessUrl = surl, CancelUrl = domain + "/store/cancel"
         });
@@ -90,23 +96,27 @@ public class CreateCheckoutController(
     [HttpPost("portal")]
     [Obsolete("Customer ID is no longer provided to clients.")]
     [AllowAnonymous]
-    public ActionResult CreatePortalSession() {
+    public async Task<ActionResult> CreatePortalSession() {
         string customerId = Request.Form["customer_id"]!;
         Stripe.BillingPortal.SessionCreateOptions options = new() { Customer = customerId, ReturnUrl = apiSettings.Value.WebsiteUrl };
         Stripe.BillingPortal.Session? session;
-        try { session = new Stripe.BillingPortal.SessionService().Create(options); }
-        catch (StripeException) { return BadRequest("Invalid Customer"); }
+        try {
+            session = await new Stripe.BillingPortal.SessionService().CreateAsync(options);
+        }
+        catch (StripeException) {
+            return BadRequest("Invalid Customer");
+        }
         Response.Headers.Append("Location", session.Url);
         return new StatusCodeResult(303);
     }
 
     [HttpGet("portal")]
     [Authorize(Policy = "Scope:PaymentInfo")]
-    public ActionResult<dynamic> SendUserToPortal() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<dynamic>> SendUserToPortal() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        target.EnsureStripeCustomer();
-        Stripe.BillingPortal.Session session = new Stripe.BillingPortal.SessionService().Create(
+        await target.EnsureStripeCustomer();
+        Stripe.BillingPortal.Session session = await new Stripe.BillingPortal.SessionService().CreateAsync(
             new Stripe.BillingPortal.SessionCreateOptions { Customer = target.StripeCustomerId, ReturnUrl = apiSettings.Value.WebsiteUrl });
         Response.Headers.Append("Location", session.Url);
         return new { url = session.Url };

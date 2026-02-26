@@ -18,36 +18,38 @@ public class AuthorizedAppsController(
 
     [HttpGet]
     [Authorize(Policy = "Scope:ManageAccount")]
-    public ActionResult<AuthorizedApp[]> GetAll() {
-        User? target = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult<AuthorizedApp[]>> GetAll() {
+        User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        target.ObtainAuthorizedApps();
-        return target.AuthorizedApps;
+        await target.ObtainAuthorizedApps();
+        return await target.GetAuthorizedApps();
     }
 
     [HttpPost]
     [Authorize(Policy = "UserOnly")]
-    public IActionResult AuthorizeApp([FromBody] AuthorizedApp app) {
-        User? user = HttpContext.User.GetUser(userRepo);
+    public async Task<IActionResult> AuthorizeApp([FromBody] AuthorizedApp app) {
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
 
-        OAuthApp? appObj = appRepo.GetOAuthApp(app.AppId);
+        OAuthApp? appObj = await appRepo.GetOAuthApp(app.AppId);
         if (appObj == null) return BadRequest("Invalid app");
 
-        user.AuthorizeApp(new AuthorizedApp(app.AppId, new Scopes(app.Scopes).ScopesString));
+        await user.AuthorizeApp(new AuthorizedApp(app.AppId, new Scopes(app.Scopes).ScopesString));
         return Ok(tokens.GenerateAuthorizationToken(user.Id, app.AppId, app.Scopes));
     }
 
     [HttpDelete("{appId}")]
     [Authorize(Policy = "UserOnly")]
-    public ActionResult DeAuthorizeApp(string appId) {
-        User? user = HttpContext.User.GetUser(userRepo);
+    public async Task<ActionResult> DeAuthorizeApp(string appId) {
+        User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
 
-        if (user.AuthorizedApps.All(a => a.AppId != appId))
+        AuthorizedApp[] authedApps = await user.GetAuthorizedApps();
+        if (authedApps.All(a => a.AppId != appId)) {
             return BadRequest("App is not authorized");
+        }
 
-        userRepo.DeleteAuthorizedApp(user.Id, appId);
+        await userRepo.DeleteAuthorizedApp(user.Id, appId);
         return Ok();
     }
 }

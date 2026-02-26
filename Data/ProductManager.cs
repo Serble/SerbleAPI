@@ -46,8 +46,8 @@ public static class ProductManager {
         return ids.Select(GetProductFromId).ToArray();
     }
     
-    public static SerbleProduct[] ListOfProductsFromUser(User target, IProductRepository productRepo) {
-        string[] products = productRepo.GetOwnedProducts(target.Id);
+    public static async Task<SerbleProduct[]> ListOfProductsFromUser(User target, IProductRepository productRepo) {
+        string[] products = await productRepo.GetOwnedProducts(target.Id);
         return GetProductsFromIds(products).Where(product => product != null).Select(product => product!).ToArray();
     }
 

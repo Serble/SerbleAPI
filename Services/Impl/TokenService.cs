@@ -5,12 +5,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SerbleAPI.Config;
 using SerbleAPI.Data;
-using SerbleAPI.Data.Schemas;
-using SerbleAPI.Repositories;
 
 namespace SerbleAPI.Services.Impl; 
 
-public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> logger, IUserRepository userRepo) : ITokenService {
+public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> logger) : ITokenService {
     
     // User Tokens
     // Claims:
@@ -23,20 +21,16 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims);
     }
     
-    public bool ValidateLoginToken(string token, out User? user) {
-        user = null;
+    public bool ValidateLoginToken(string token, out string? userId) {
+        userId = null;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type")) return false;
-            if (claims["type"] != "user") return false;
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            return true;
+            if (!claims!.TryGetValue("userid", out userId) || !claims.TryGetValue("type", out string? type)) return false;
+            return type == "user";
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);
@@ -57,8 +51,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims);
     }
     
-    public bool ValidateAuthorizationToken(string token, string appId, out User? user, out string scopeString, out string reason) {
-        user = null;
+    public bool ValidateAuthorizationToken(string token, string appId, out string? userId, out string scopeString, out string reason) {
+        userId = null;
         scopeString = "";
         reason = "Unknown Error";
         try {
@@ -68,16 +62,15 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("appid") || !claims.ContainsKey("scope")) {
+            if (!claims!.TryGetValue("userid", out userId) 
+                || !claims.TryGetValue("type", out string? type) 
+                || !claims.TryGetValue("appid", out string? tokenAppId) 
+                || !claims.TryGetValue("scope", out scopeString!)) {
                 reason = "Missing claims";
                 return false;
             }
-            if (claims["type"] != "oauth-authorization") { reason = "Invalid token type"; return false; }
-            if (claims["appid"] != appId) { reason = "Invalid app id"; return false; }
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            scopeString = claims["scope"];
+            if (type != "oauth-authorization") { reason = "Invalid token type"; return false; }
+            if (tokenAppId != appId) { reason = "Invalid app id"; return false; }
             reason = "Success";
             return true;
         }
@@ -99,8 +92,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims, 1);
     }
     
-    public bool ValidateAccessToken(string token, out User? user, out string scope) {
-        user = null;
+    public bool ValidateAccessToken(string token, out string? userId, out string scope) {
+        userId = null;
         scope = "";
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
@@ -108,13 +101,10 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("scope")) return false;
-            if (claims["type"] != "oauth-access") return false;
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            scope = claims["scope"];
-            return true;
+            if (!claims!.TryGetValue("userid", out userId) 
+                || !claims.TryGetValue("type", out string? type) 
+                || !claims.TryGetValue("scope", out scope!)) return false;
+            return type == "oauth-access";
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);
@@ -137,8 +127,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims);
     }
     
-    public bool ValidateRefreshToken(string token, string appId, out User? user, out string scope) {
-        user = null;
+    public bool ValidateRefreshToken(string token, string appId, out string? userId, out string scope) {
+        userId = null;
         scope = "";
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
@@ -146,14 +136,12 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("appid") || !claims.ContainsKey("scope")) return false;
-            if (claims["type"] != "oauth-refresh") return false;
-            if (claims["appid"] != appId) return false;
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            scope = claims["scope"];
-            return true;
+            if (!claims!.TryGetValue("userid", out userId)
+                || !claims.TryGetValue("type", out string? type) 
+                || !claims.TryGetValue("appid", out string? tokenAppId) 
+                || !claims.TryGetValue("scope", out scope!)) return false;
+            if (type != "oauth-refresh") return false;
+            return tokenAppId == appId;
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);
@@ -174,8 +162,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims);
     }
     
-    public bool ValidateEmailConfirmationToken(string token, out User user, out string email) {
-        user = null!;
+    public bool ValidateEmailConfirmationToken(string token, out string? userId, out string email) {
+        userId = null!;
         email = "";
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
@@ -183,13 +171,10 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type") || !claims.ContainsKey("email")) return false;
-            if (claims["type"] != "email-confirmation") return false;
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            email = claims["email"];
-            return true;
+            if (!claims!.TryGetValue("userid", out userId)
+                || !claims.TryGetValue("type", out string? type) 
+                || !claims.TryGetValue("email", out email!)) return false;
+            return type == "email-confirmation";
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);
@@ -208,20 +193,17 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims);
     }
     
-    public bool ValidateFirstStepLoginToken(string token, out User user) {
-        user = null!;
+    public bool ValidateFirstStepLoginToken(string token, out string? userId) {
+        userId = null!;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
                 return false;
             }
             claims.ThrowIfNull();
-            if (!claims!.ContainsKey("userid") || !claims.ContainsKey("type")) return false;
-            if (claims["type"] != "first-step-login") return false;
-            User? gottenUser = userRepo.GetUser(claims["userid"]);
-            gottenUser.ThrowIfNull();
-            user = gottenUser!.WithRepos(userRepo);
-            return true;
+            if (!claims!.TryGetValue("userid", out userId)
+                || !claims.TryGetValue("type", out string? type)) return false;
+            return type == "first-step-login";
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);

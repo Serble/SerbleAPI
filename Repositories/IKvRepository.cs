@@ -1,6 +1,6 @@
 namespace SerbleAPI.Repositories;
 
 public interface IKvRepository {
-    void Set(string key, string value);
-    string? Get(string key);
+    Task Set(string key, string value);
+    Task<string?> Get(string key);
 }

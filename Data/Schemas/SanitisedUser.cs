@@ -19,31 +19,33 @@ public class SanitisedUser {
     [Obsolete("Stripe Customer ID is no longer provided to clients for security reasons.")]
     public string? StripeCustomerId { get; set; }
 
-    public SanitisedUser(User user, string scopeString, bool ignoreAuthedApps = false) {
-        //ScopeHandler.ScopesEnum scopes = ScopeHandler.ScopeStringToEnums(scopeString);
+    private SanitisedUser() {
+        
+    }
+
+    public static async Task<SanitisedUser> Create(User user, string scopeString, bool ignoreAuthedApps = false) {
+        SanitisedUser sanitisedUser = new();
+        
         string[] scopes = ScopeHandler.StringToListOfScopeIds(scopeString);
         bool hasFullAccess = scopes.Contains("full_access");
-        Id = user.Id;
+        sanitisedUser.Id = user.Id;
 
         if (scopes.Contains("user_info") || hasFullAccess) {
-            Username = user.Username;
-            Email = user.Email;
-            VerifiedEmail = user.VerifiedEmail;
-            PermLevel = user.PermLevel;
-            Language = user.Language;
+            sanitisedUser.Username = user.Username;
+            sanitisedUser.Email = user.Email;
+            sanitisedUser.VerifiedEmail = user.VerifiedEmail;
+            sanitisedUser.PermLevel = user.PermLevel;
+            sanitisedUser.Language = user.Language;
         }
 
         if (scopes.Contains("manage_account") || hasFullAccess) {
-            TotpEnabled = user.TotpEnabled;
+            sanitisedUser.TotpEnabled = user.TotpEnabled;
         }
 
         if ((scopes.Contains("apps_control") || hasFullAccess) && !ignoreAuthedApps) {
-            AuthorizedApps = user.AuthorizedApps;
+            sanitisedUser.AuthorizedApps = await user.GetAuthorizedApps();
         }
-
-        if (scopes.Contains("payment_info") || hasFullAccess) {
-            // StripeCustomerId = user.StripeCustomerId;
-        }
+        
+        return sanitisedUser;
     }
-
 }
