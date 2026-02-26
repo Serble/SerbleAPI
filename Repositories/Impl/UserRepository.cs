@@ -21,22 +21,29 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         TotpSecret      = r.TotpSecret,
         PasswordSalt    = r.PasswordSalt
     };
+    
+    private User? MapWithRepos(DbUser? r) {
+        if (r == null) return null;
+        User user = Map(r);
+        user.WithRepos(this);
+        return user;
+    }
 
     // ── Users ─────────────────────────────────────────────────────────────────
 
     public async Task<User?> GetUser(string userId) {
         DbUser? row = await db.Users.FindAsync(userId);
-        return row == null ? null : Map(row);
+        return MapWithRepos(row);
     }
 
     public async Task<User?> GetUserFromName(string userName) {
         DbUser? row = await db.Users.FirstOrDefaultAsync(u => u.Username == userName);
-        return row == null ? null : Map(row);
+        return MapWithRepos(row);
     }
 
     public async Task<User?> GetUserFromStripeCustomerId(string customerId) {
         DbUser? row = await db.Users.FirstOrDefaultAsync(u => u.SubscriptionId == customerId);
-        return row == null ? null : Map(row);
+        return MapWithRepos(row);
     }
 
     public async Task<User> AddUser(User user) {
