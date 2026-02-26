@@ -67,10 +67,11 @@ public class AuthController(
             SavedPasskey? creds = await passkeyRepo.GetPasskey(clientResponse.Id);
             if (creds == null) return BadRequest("Unknown passkey");
 
-            IsUserHandleOwnerOfCredentialIdAsync callback = (args, _) => 
-                passkeyRepo.GetUsersPasskeys(Encoding.UTF8.GetString(args.UserHandle))
-                .ContinueWith(t => t.Result.Any(c => c.Descriptor!.Id.SequenceEqual(args.CredentialId)), 
-                    cancellationToken);
+            IsUserHandleOwnerOfCredentialIdAsync callback = async (args, _) => {
+                string handle = Encoding.UTF8.GetString(args.UserHandle);
+                SavedPasskey[] passkeys = await passkeyRepo.GetUsersPasskeys(handle);
+                return passkeys.Any(c => c.Descriptor!.Id.SequenceEqual(args.CredentialId));
+            };
 
             VerifyAssertionResult res = await fido.MakeAssertionAsync(
                 clientResponse, options,
@@ -84,7 +85,7 @@ public class AuthController(
                 await passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
             }
 
-            string token = tokens.GenerateLoginToken(creds.OwnerId!);
+            string token = tokens.GenerateLoginToken(creds.OwnerId);
             return Ok(new { token, success = true });
         }
         catch (Exception e) {
