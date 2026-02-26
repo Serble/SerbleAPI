@@ -6,7 +6,7 @@ namespace SerbleAPI.Repositories.Impl;
 
 public class UserRepository(SerbleDbContext db) : IUserRepository {
 
-    // ── Mapping helpers ───────────────────────────────────────────────────────
+    // Mapping helpers
 
     private static User Map(DbUser r) => new() {
         Id              = r.Id,
@@ -29,7 +29,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         return user;
     }
 
-    // ── Users ─────────────────────────────────────────────────────────────────
+    // Users
 
     public async Task<User?> GetUser(string userId) {
         DbUser? row = await db.Users.FindAsync(userId);
@@ -84,7 +84,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
     public async Task DeleteUser(string userId) {
         DbUser? row = await db.Users.FindAsync(userId);
         if (row == null) return;
-        // Cascade: remove authorized apps too
+        // remove authorised apps too
         await db.UserAuthorizedApps.Where(a => a.UserId == userId).ExecuteDeleteAsync();
         db.Users.Remove(row);
         await db.SaveChangesAsync();
@@ -92,7 +92,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
 
     public Task<long> CountUsers() => db.Users.LongCountAsync();
 
-    // ── Authorized apps ───────────────────────────────────────────────────────
+    // Authorised apps
 
     public async Task AddAuthorizedApp(string userId, AuthorizedApp app) {
         // Remove existing entry for same app so we can replace it cleanly
