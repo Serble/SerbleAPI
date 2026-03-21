@@ -16,6 +16,13 @@ public class OAuthTokenController(
     IAppRepository appRepo,
     IUserRepository users) : ControllerManager {
 
+    [HttpPost("refresh2")]
+    public Task<ActionResult<AccessTokenResponse>> RequestTokensForm(
+        [FromForm(Name = "code")] string code,
+        [FromForm(Name = "client_id")] string clientId,
+        [FromForm(Name = "client_secret")] string clientSecret,
+        [FromForm(Name = "grant_type")] string grantType) => RequestTokens(code, clientId, clientSecret, grantType);
+
     [HttpPost("refresh")]
     public async Task<ActionResult<AccessTokenResponse>> RequestTokens(
         [FromQuery] string code,
@@ -47,6 +54,13 @@ public class OAuthTokenController(
             TokenType = "bearer"
         });
     }
+    
+    [HttpPost("access2")]
+    public Task<ActionResult<AccessTokenResponse>> RequestAccessForm(
+        [FromForm(Name = "refresh_token")] string refreshToken,
+        [FromForm(Name = "client_id")] string clientId,
+        [FromForm(Name = "client_secret")] string clientSecret,
+        [FromForm(Name = "grant_type")] string grantType) => RequestAccess(refreshToken, clientId, clientSecret, grantType);
     
     [HttpPost("access")]
     public async Task<ActionResult<AccessTokenResponse>> RequestAccess(
