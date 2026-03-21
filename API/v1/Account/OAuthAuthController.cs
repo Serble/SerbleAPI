@@ -10,6 +10,7 @@ public class OAuthAuthController(IOptions<ApiSettings> apiSettings) : Controller
 
     [HttpGet]
     public ActionResult<string> Get() {
-        return Redirect(apiSettings.Value.WebsiteUrl + "/oauth/authorize");
+        string url = apiSettings.Value.WebsiteUrl + "/oauth/authorize" + Request.QueryString;
+        return Redirect(url);
     }
 }
