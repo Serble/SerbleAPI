@@ -36,6 +36,9 @@ public class CreateCheckoutController(
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
         }
+        catch (InvalidOperationException e) {
+            return BadRequest(e.Message);
+        }
 
         StripeList<Price> prices = await new PriceService().ListAsync(new PriceListOptions {
             LookupKeys = lookupKeys.ToList()
@@ -75,6 +78,9 @@ public class CreateCheckoutController(
         }
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
+        }
+        catch (InvalidOperationException e) {
+            return BadRequest(e.Message);
         }
 
         StripeList<Price> prices = await new PriceService().ListAsync(new PriceListOptions { LookupKeys = lookupKeys.ToList() });

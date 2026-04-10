@@ -53,8 +53,8 @@ public static class ProductManager {
 
     public static string[] CheckoutBodyToLookupIds(JsonDocument doc, out List<SerbleProduct> products) {
         JsonElement root = doc.RootElement;
-        List<string> ids = new();
-        products = new List<SerbleProduct>();
+        List<string> ids = [];
+        products = [];
         foreach (JsonElement prod in root.EnumerateArray()) {
             if (prod.ValueKind == JsonValueKind.String) {
                 // Old format
@@ -62,7 +62,11 @@ public static class ProductManager {
                 if (productOld == null) {
                     continue;
                 }
-                ids.Add(productOld.PriceLookupIds.First().Value);
+                string oldLookupId = productOld.PriceLookupIds.First().Value;
+                if (string.IsNullOrEmpty(oldLookupId)) {
+                    throw new InvalidOperationException($"Product '{productOld.Id}' has an empty price lookup key.");
+                }
+                ids.Add(oldLookupId);
                 products.Add(productOld);
                 continue;
             }
@@ -74,10 +78,14 @@ public static class ProductManager {
                 throw new KeyNotFoundException(itemId);
             }
             
-            // Optional priceid
+            // Optional priceid — value in the request is the plan key (e.g. "monthly"),
+            // not the Stripe lookup key itself.
             string priceId = (prod.TryGetProperty("priceid", out JsonElement priceIdElement) ? priceIdElement.GetString() : null) ??
-                              product.PriceLookupIds.First().Value;
-            ids.Add(product.PriceLookupIds[priceId]);
+                              product.PriceLookupIds.First().Key;
+            if (!product.PriceLookupIds.TryGetValue(priceId, out string? lookupId) || string.IsNullOrEmpty(lookupId)) {
+                throw new KeyNotFoundException($"{itemId}/{priceId}");
+            }
+            ids.Add(lookupId);
         }
         return ids.ToArray();
     }
