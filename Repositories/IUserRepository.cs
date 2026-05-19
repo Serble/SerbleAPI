@@ -10,6 +10,8 @@ public interface IUserRepository {
     Task UpdateUser(User user);
     Task DeleteUser(string userId);
     Task<long> CountUsers();
+    Task<long> CountVerifiedEmailUsers();
+    Task<User[]> SearchUsers(string query, int limit);
 
     Task AddAuthorizedApp(string userId, AuthorizedApp app);
     Task<AuthorizedApp[]> GetAuthorizedApps(string userId);

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using SerbleAPI.API;
 using SerbleAPI.Authentication;
@@ -97,7 +98,12 @@ public static class Program {
             opts.AddPolicy("UserOnly", p =>
                 p.RequireAuthenticatedUser()
                  .RequireAssertion(ctx => ctx.User.IsUser()));
+            opts.AddPolicy("AdminOnly", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new AdminOnlyRequirement()));
         });
+
+        builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
 
         builder.WebHost.UseUrls(apiSettings.BindUrl);  // move IP binding to config because I hate launchSettings.json
         

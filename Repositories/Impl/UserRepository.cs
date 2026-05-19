@@ -92,6 +92,25 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
 
     public Task<long> CountUsers() => db.Users.LongCountAsync();
 
+    public Task<long> CountVerifiedEmailUsers() =>
+        db.Users.LongCountAsync(u => u.VerifiedEmail);
+
+    public async Task<User[]> SearchUsers(string query, int limit) {
+        if (limit <= 0) limit = 25;
+        if (limit > 200) limit = 200;
+        string q = (query ?? "").Trim();
+        IQueryable<DbUser> qry = db.Users.AsNoTracking();
+        if (q.Length > 0) {
+            qry = qry.Where(u => EF.Functions.Like(u.Username, $"%{q}%")
+                              || (u.Email != null && EF.Functions.Like(u.Email, $"%{q}%")));
+        }
+        DbUser[] rows = await qry
+            .OrderBy(u => u.Username)
+            .Take(limit)
+            .ToArrayAsync();
+        return rows.Select(r => MapWithRepos(r)!).ToArray();
+    }
+
     // Authorised apps
 
     public async Task AddAuthorizedApp(string userId, AuthorizedApp app) {

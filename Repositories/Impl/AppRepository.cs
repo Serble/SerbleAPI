@@ -55,4 +55,22 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         db.Apps.Remove(row);
         await db.SaveChangesAsync();
     }
+
+    public Task<long> CountApps() => db.Apps.LongCountAsync();
+
+    public async Task<OAuthApp[]> SearchApps(string query, int limit) {
+        if (limit <= 0) limit = 25;
+        if (limit > 200) limit = 200;
+        string q = (query ?? "").Trim();
+        IQueryable<DbApp> qry = db.Apps.AsNoTracking();
+        if (q.Length > 0) {
+            qry = qry.Where(a => EF.Functions.Like(a.Name, $"%{q}%")
+                              || EF.Functions.Like(a.Id, $"%{q}%"));
+        }
+        DbApp[] rows = await qry
+            .OrderBy(a => a.Name)
+            .Take(limit)
+            .ToArrayAsync();
+        return rows.Select(Map).ToArray();
+    }
 }

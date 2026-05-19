@@ -8,4 +8,6 @@ public interface IAppRepository {
     Task AddOAuthApp(OAuthApp app);
     Task UpdateOAuthApp(OAuthApp app);
     Task DeleteOAuthApp(string appId);
+    Task<long> CountApps();
+    Task<OAuthApp[]> SearchApps(string query, int limit);
 }
