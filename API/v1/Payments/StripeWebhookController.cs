@@ -24,7 +24,7 @@ public class StripeWebhookController(
     [HttpPost]
     public async Task<IActionResult> StripeWebhookCallback() {
         string json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-        string endpointSecret = settings.Value.ApiKey;
+        string endpointSecret = settings.Value.WebhookSecret;
         try {
             StringValues signatureHeader = Request.Headers["Stripe-Signature"];
             Event? stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, endpointSecret);
