@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using Newtonsoft.Json;
 using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
@@ -104,25 +105,19 @@ public class StripeWebhookController(
                         webhookTargets.Add((product, item.AmountTotal, item.Currency));
                     }
 
-                    bool fulfill = liveMode || (user?.IsAdmin() ?? false);
-                    if (fulfill) {
-                        if (user != null) {
-                            await productRepo.AddOwnedProducts(user.Id, itemIds.ToArray());
-                        }
-
-                        // Fire per-product webhooks now that fulfillment is committed.
-                        foreach ((SerbleProduct product, long? amount, string? currency) in webhookTargets) {
-                            if (string.IsNullOrWhiteSpace(product.Webhook)) continue;
-                            try {
-                                await FireProductWebhook(product, user?.Id, amount, currency);
-                            }
-                            catch (Exception ex) {
-                                logger.LogError(ex, "Failed to fire product webhook for {ProductId}", product.Id);
-                            }
-                        }
+                    if (user != null) {
+                        await productRepo.AddOwnedProducts(user.Id, itemIds.ToArray());
                     }
-                    else {
-                        logger.LogDebug("Not fulfilling order because we are not in live mode and user is not admin");
+
+                    // Fire per-product webhooks now that fulfillment is committed.
+                    foreach ((SerbleProduct product, long? amount, string? currency) in webhookTargets) {
+                        if (string.IsNullOrWhiteSpace(product.Webhook)) continue;
+                        try {
+                            await FireProductWebhook(product, user?.Id, amount, currency);
+                        }
+                        catch (Exception ex) {
+                            logger.LogError(ex, "Failed to fire product webhook for {ProductId}", product.Id);
+                        }
                     }
 
                     if (user is { VerifiedEmail: true }) {
@@ -181,6 +176,7 @@ public class StripeWebhookController(
     private async Task FireProductWebhook(SerbleProduct product, string? userId, long? amountTotal, string? currency) {
         if (string.IsNullOrWhiteSpace(product.Webhook)) return;
 
+        logger.LogInformation("Making webhook request to {Webhook} for product {ProductId}", product.Webhook, product.Id);
         HttpClient http = httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(5);
 
