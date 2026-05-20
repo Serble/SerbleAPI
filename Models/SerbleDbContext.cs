@@ -15,6 +15,7 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbApp> Apps { get; set; }
     public virtual DbSet<DbKv> Kvs { get; set; }
     public virtual DbSet<DbOwnedProduct> OwnedProducts { get; set; }
+    public virtual DbSet<DbSerbleProduct> SerbleProducts { get; set; }
     public virtual DbSet<DbUser> Users { get; set; }
     public virtual DbSet<DbUserAuthorizedApp> UserAuthorizedApps { get; set; }
     public virtual DbSet<DbUserNote> UserNotes { get; set; }

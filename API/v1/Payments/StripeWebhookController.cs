@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
@@ -17,7 +18,8 @@ public class StripeWebhookController(
     IOptions<StripeSettings> settings,
     IOptions<EmailSettings> emailSettings,
     IUserRepository userRepo,
-    IProductRepository productRepo) : ControllerManager {
+    IProductRepository productRepo,
+    IHttpClientFactory httpClientFactory) : ControllerManager {
 
     [HttpPost]
     public async Task<IActionResult> StripeWebhookCallback() {
@@ -37,7 +39,7 @@ public class StripeWebhookController(
                     if (user == null) { logger.LogDebug("User not found for subscription: " + subscription.Id); break; }
 
                     foreach (SubscriptionItem subscriptionItem in subscription.Items) {
-                        SerbleProduct? prod = ProductManager.GetProductFromPriceId(subscriptionItem.Price.Id);
+                        SerbleProduct? prod = await productRepo.GetProductFromPriceId(subscriptionItem.Price.Id);
                         if (prod == null) continue;
                         await productRepo.RemoveOwnedProduct(user.Id, prod.Id);
                         logger.LogDebug("Removed product " + prod.Name + " from user " + user.Username);
@@ -70,12 +72,16 @@ public class StripeWebhookController(
                 case Events.CheckoutSessionCompleted: {
                     if (stripeEvent.Data.Object is not Session session) break;
 
-                    User? user = await userRepo.GetUser(session.ClientReferenceId);
-                    if (user == null) {
-                        logger.LogDebug("User not found for checkout session: " + session.Id); break;
+                    User? user = session.ClientReferenceId == null
+                        ? null
+                        : await userRepo.GetUser(session.ClientReferenceId);
+                    if (user == null && session.ClientReferenceId != null) {
+                        logger.LogDebug("User not found for checkout session: " + session.Id);
+                        break;
                     }
 
-                    logger.LogDebug("Checkout session completed: " + session.Id + " for user " + user.Username);
+                    logger.LogDebug("Checkout session completed: " + session.Id + " for user "
+                        + (user?.Username ?? "<anonymous>"));
 
                     StripeList<LineItem> lineItems = await new SessionService()
                         .ListLineItemsAsync(session.Id, new SessionListLineItemsOptions { Limit = 5 });
@@ -85,22 +91,41 @@ public class StripeWebhookController(
 
                     List<string> purchasedItems = [];
                     List<string> itemIds = [];
-                    lineItems.Data.ForEach(item => {
+                    List<(SerbleProduct product, long? amount, string? currency)> webhookTargets = [];
+                    foreach (LineItem item in lineItems.Data) {
                         logger.LogDebug("Item Bought: " + item.Description);
                         purchasedItems.Add($"<li>{item.Description}</li>");
-                        SerbleProduct? product = ProductManager.GetProductFromPriceId(item.Price.Id);
-                        if (product == null) { logger.LogError("Unknown item bought: " + item.Price.Id); }
-                        else { itemIds.Add(product.Id); }
-                    });
+                        SerbleProduct? product = await productRepo.GetProductFromPriceId(item.Price.Id);
+                        if (product == null) {
+                            logger.LogError("Unknown item bought: " + item.Price.Id);
+                            continue;
+                        }
+                        itemIds.Add(product.Id);
+                        webhookTargets.Add((product, item.AmountTotal, item.Currency));
+                    }
 
-                    if (liveMode || user.IsAdmin()) {
-                        await productRepo.AddOwnedProducts(user.Id, itemIds.ToArray());
+                    bool fulfill = liveMode || (user?.IsAdmin() ?? false);
+                    if (fulfill) {
+                        if (user != null) {
+                            await productRepo.AddOwnedProducts(user.Id, itemIds.ToArray());
+                        }
+
+                        // Fire per-product webhooks now that fulfillment is committed.
+                        foreach ((SerbleProduct product, long? amount, string? currency) in webhookTargets) {
+                            if (string.IsNullOrWhiteSpace(product.Webhook)) continue;
+                            try {
+                                await FireProductWebhook(product, user?.Id, amount, currency);
+                            }
+                            catch (Exception ex) {
+                                logger.LogError(ex, "Failed to fire product webhook for {ProductId}", product.Id);
+                            }
+                        }
                     }
                     else {
                         logger.LogDebug("Not fulfilling order because we are not in live mode and user is not admin");
                     }
 
-                    if (user.VerifiedEmail) {
+                    if (user is { VerifiedEmail: true }) {
                         string emailBody = EmailSchemasService.GetEmailSchema(EmailSchema.PurchaseReceipt, LocalisationHandler.LanguageOrDefault(user));
                         emailBody = emailBody.Replace("{name}", user.Username)
                                              .Replace("{products}", string.Join(", ", purchasedItems));
@@ -150,6 +175,31 @@ public class StripeWebhookController(
         catch (Exception e) {
             logger.LogError(e.ToString());
             return BadRequest();
+        }
+    }
+
+    private async Task FireProductWebhook(SerbleProduct product, string? userId, long? amountTotal, string? currency) {
+        if (string.IsNullOrWhiteSpace(product.Webhook)) return;
+
+        HttpClient http = httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(5);
+
+        HttpRequestMessage req = new(HttpMethod.Post, product.Webhook) {
+            Content = JsonContent.Create(new {
+                userId,
+                productId = product.Id,
+                amountTotal,
+                currency
+            })
+        };
+        if (!string.IsNullOrEmpty(product.WebhookSecret)) {
+            req.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", product.WebhookSecret);
+        }
+
+        HttpResponseMessage resp = await http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode) {
+            logger.LogWarning("Product webhook for {ProductId} returned {Status}", product.Id, (int)resp.StatusCode);
         }
     }
 }

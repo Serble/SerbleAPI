@@ -40,7 +40,6 @@ public static class Program {
         }
         StripeConfiguration.ApiKey = stripeSettings.ApiKey;
         
-        ProductManager.Load();
         RawDataManager.LoadRawData();
         
         builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
@@ -52,6 +51,7 @@ public static class Program {
         builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
         
         builder.Services.AddControllers();
+        builder.Services.AddHttpClient();
         builder.Services.AddSwaggerGen();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddDistributedMemoryCache();

@@ -16,6 +16,6 @@ public class AccountProductsController(IUserRepository userRepo, IProductReposit
     public async Task<ActionResult<SerbleProduct[]>> Get() {
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-        return Ok(await ProductManager.ListOfProductsFromUser(target, productRepo));
+        return Ok(await productRepo.ListProductsOwnedBy(target.Id));
     }
 }

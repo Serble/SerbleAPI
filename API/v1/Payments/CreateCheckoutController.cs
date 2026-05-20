@@ -22,7 +22,7 @@ public class CreateCheckoutController(
 
     [HttpPost("checkout")]
     [Authorize(Policy = "Scope:PaymentInfo")]
-    public async Task<ActionResult<dynamic>> CreateCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "subscription") {
+    public async Task<ActionResult<dynamic>> CreateCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "subscription", [FromServices] IProductRepository productRepo = null!) {
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) {
             return Unauthorized();
@@ -31,7 +31,7 @@ public class CreateCheckoutController(
         string domain = apiSettings.Value.WebsiteUrl;
         string[] lookupKeys;
         try {
-            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out _);
+            (lookupKeys, _) = await ProductManager.CheckoutBodyToLookupIds(body, productRepo);
         }
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
@@ -69,18 +69,24 @@ public class CreateCheckoutController(
     // Anonymous checkout — no user account needed
     [HttpPost("checkoutanon")]
     [AllowAnonymous]
-    public async Task<ActionResult<dynamic>> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment") {
+    public async Task<ActionResult<dynamic>> CreateAnonCheckoutSession([FromBody] JsonDocument body, [FromQuery] string mode = "payment", [FromServices] IProductRepository productRepo = null!) {
         string domain = apiSettings.Value.WebsiteUrl;
         string[] lookupKeys;
         List<SerbleProduct> prods;
         try {
-            lookupKeys = ProductManager.CheckoutBodyToLookupIds(body, out prods);
+            (lookupKeys, prods) = await ProductManager.CheckoutBodyToLookupIds(body, productRepo);
         }
         catch (KeyNotFoundException e) {
             return NotFound("Invalid product ID: " + e.Message);
         }
         catch (InvalidOperationException e) {
             return BadRequest(e.Message);
+        }
+
+        // Reject the anon checkout if any requested product disallows anonymous purchase.
+        SerbleProduct? disallowed = prods.FirstOrDefault(p => !p.AllowAnonymous);
+        if (disallowed != null) {
+            return Unauthorized($"Product '{disallowed.Id}' requires a signed-in user.");
         }
 
         StripeList<Price> prices = await new PriceService().ListAsync(new PriceListOptions { LookupKeys = lookupKeys.ToList() });
