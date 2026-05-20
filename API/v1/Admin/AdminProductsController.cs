@@ -87,6 +87,7 @@ public class AdminProductView {
     public string? Webhook { get; set; }
     public string? WebhookSecret { get; set; }
     public bool AllowAnonymous { get; set; }
+    public bool IsSubscription { get; set; }
 
     public static AdminProductView From(SerbleProduct p) => new() {
         Id = p.Id,
@@ -99,7 +100,8 @@ public class AdminProductView {
         SuccessTokenSecret = p.SuccessTokenSecret,
         Webhook = p.Webhook,
         WebhookSecret = p.WebhookSecret,
-        AllowAnonymous = p.AllowAnonymous
+        AllowAnonymous = p.AllowAnonymous,
+        IsSubscription = p.IsSubscription
     };
 
     public SerbleProduct ToProduct() => new() {
@@ -113,6 +115,7 @@ public class AdminProductView {
         SuccessTokenSecret = SuccessTokenSecret,
         Webhook = Webhook,
         WebhookSecret = WebhookSecret,
-        AllowAnonymous = AllowAnonymous
+        AllowAnonymous = AllowAnonymous,
+        IsSubscription = IsSubscription
     };
 }

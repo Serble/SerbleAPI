@@ -84,6 +84,7 @@ public class ProductRepository(SerbleDbContext db) : IProductRepository {
         row.Webhook = product.Webhook;
         row.WebhookSecret = product.WebhookSecret;
         row.AllowAnonymous = product.AllowAnonymous;
+        row.IsSubscription = product.IsSubscription;
         await db.SaveChangesAsync();
         return true;
     }
@@ -107,6 +108,7 @@ public class ProductRepository(SerbleDbContext db) : IProductRepository {
         SuccessTokenSecret = p.SuccessTokenSecret,
         Webhook = p.Webhook,
         WebhookSecret = p.WebhookSecret,
-        AllowAnonymous = p.AllowAnonymous
+        AllowAnonymous = p.AllowAnonymous,
+        IsSubscription = p.IsSubscription
     };
 }

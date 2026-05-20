@@ -23,6 +23,8 @@ public class SerbleProduct {
 
     public bool AllowAnonymous { get; set; }
 
+    public bool IsSubscription { get; set; }
+
     public static SerbleProduct FromDb(DbSerbleProduct row) {
         return new SerbleProduct {
             Id = row.Id,
@@ -36,7 +38,8 @@ public class SerbleProduct {
             SuccessTokenSecret = row.SuccessTokenSecret,
             Webhook = row.Webhook,
             WebhookSecret = row.WebhookSecret,
-            AllowAnonymous = row.AllowAnonymous
+            AllowAnonymous = row.AllowAnonymous,
+            IsSubscription = row.IsSubscription
         };
     }
 }

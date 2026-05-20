@@ -32,4 +32,7 @@ public class DbSerbleProduct {
     public string? WebhookSecret { get; set; }
 
     public bool AllowAnonymous { get; set; }
+
+    // True => Stripe Checkout "subscription" mode; false => one-off "payment" mode.
+    public bool IsSubscription { get; set; }
 }
