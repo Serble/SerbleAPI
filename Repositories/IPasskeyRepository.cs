@@ -8,6 +8,7 @@ public interface IPasskeyRepository {
     Task<SavedPasskey?> GetPasskey(byte[] credId);
     Task<string?> GetUserIdFromPasskeyId(byte[] credId);
     Task SetPasskeySignCount(byte[] credId, int val);
+    Task SetPasskeyName(byte[] credId, string name);
     Task DeletePasskey(byte[] credId);
     Task UpdatePasskeyDevicePublicKeys(byte[] credId, byte[][] devicePublicKeys);
 }

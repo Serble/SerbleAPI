@@ -84,6 +84,14 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
         await db.SaveChangesAsync();
     }
 
+    public async Task SetPasskeyName(byte[] credId, string name) {
+        string id = CredId(credId);
+        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
+        if (row == null) return;
+        row.Name = name;
+        await db.SaveChangesAsync();
+    }
+
     public async Task DeletePasskey(byte[] credId) {
         string id = CredId(credId);
         DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);

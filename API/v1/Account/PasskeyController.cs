@@ -45,6 +45,20 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
         return Ok(new { success = true });
     }
 
+    [HttpPatch("rename/{name}")]
+    [Authorize(Policy = "UserOnly")]
+    public async Task<IActionResult> RenamePasskey(string name, [FromForm] string newName) {
+        User? user = await HttpContext.User.GetUser(userRepo);
+        if (user == null) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(newName)) return BadRequest("New name cannot be empty");
+        SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(user.Id);
+        SavedPasskey? target = keys.FirstOrDefault(k => k.Name == name);
+        if (target == null) return NotFound("Passkey not found");
+        if (keys.Any(k => k.Name == newName)) return Conflict("A passkey with that name already exists");
+        await passkeyRepo.SetPasskeyName(target.CredentialId!, newName);
+        return Ok(new { success = true });
+    }
+
     [HttpPost("credentialoptions")]
     [Authorize(Policy = "UserOnly")]
     public async Task<IActionResult> MakeCredentialOptions(
