@@ -49,6 +49,7 @@ public static class Program {
         builder.Services.AddOptions<ReCaptchaSettings>().Bind(builder.Configuration.GetSection("ReCaptcha"));
         builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
         builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
+        builder.Services.AddOptions<OidcSettings>().Bind(builder.Configuration.GetSection("Oidc"));
         
         builder.Services.AddControllers();
         builder.Services.AddHttpClient();
@@ -72,6 +73,12 @@ public static class Program {
         builder.Services.AddScoped<ITurnstileCaptchaService, TurnstileCaptchaService>();
         builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
 
+        // OIDC provider services
+        builder.Services.AddSingleton<IOidcKeyService, OidcKeyService>();
+        builder.Services.AddScoped<IOidcTokenService, OidcTokenService>();
+        builder.Services.AddScoped<IOidcClaimsService, OidcClaimsService>();
+        builder.Services.AddScoped<IAppAccessPolicyService, AppAccessPolicyService>();
+
         // db repos
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
@@ -79,6 +86,10 @@ public static class Program {
         builder.Services.AddScoped<IProductRepository, ProductRepository>();
         builder.Services.AddScoped<INoteRepository, NoteRepository>();
         builder.Services.AddScoped<IKvRepository, KvRepository>();
+        builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+        builder.Services.AddScoped<IAppAccessRepository, AppAccessRepository>();
+        builder.Services.AddScoped<IOidcCodeRepository, OidcCodeRepository>();
+        builder.Services.AddScoped<IOidcRefreshRepository, OidcRefreshRepository>();
 
         // Authentication
         builder.Services.AddAuthentication(SerbleAuthenticationHandler.SchemeName)

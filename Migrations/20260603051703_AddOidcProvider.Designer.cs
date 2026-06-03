@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SerbleAPI.Models;
 
@@ -11,9 +12,11 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Migrations
 {
     [DbContext(typeof(SerbleDbContext))]
-    partial class SerbleDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260603051703_AddOidcProvider")]
+    partial class AddOidcProvider
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -229,9 +232,6 @@ namespace SerbleAPI.Migrations
                     b.Property<string>("TokenHash")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
-
-                    b.Property<long>("AuthTimeUnix")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("ClientId")
                         .IsRequired()

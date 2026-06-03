@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Models;
@@ -11,8 +12,24 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         Name         = r.Name         ?? "",
         Description  = r.Description  ?? "",
         ClientSecret = r.ClientSecret ?? "",
-        RedirectUri  = r.RedirectUri  ?? ""
+        RedirectUri  = r.RedirectUri  ?? "",
+        AdditionalRedirectUris = DeserializeUris(r.OidcRedirectUris),
+        IsPublicClient = r.IsPublicClient,
+        RequirePkce    = r.RequirePkce
     };
+
+    private static List<string> DeserializeUris(string? json) {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch (JsonException) {
+            return [];
+        }
+    }
+
+    private static string? SerializeUris(List<string> uris) =>
+        uris.Count == 0 ? null : JsonSerializer.Serialize(uris);
 
     public async Task<OAuthApp?> GetOAuthApp(string appId) {
         DbApp? row = await db.Apps.FirstOrDefaultAsync(a => a.Id == appId);
@@ -33,7 +50,10 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
             Name         = app.Name,
             Description  = app.Description,
             ClientSecret = app.ClientSecret,
-            RedirectUri  = app.RedirectUri
+            RedirectUri  = app.RedirectUri,
+            OidcRedirectUris = SerializeUris(app.AdditionalRedirectUris),
+            IsPublicClient   = app.IsPublicClient,
+            RequirePkce      = app.RequirePkce
         });
         return db.SaveChangesAsync();
     }
@@ -46,6 +66,9 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         row.Description  = app.Description;
         row.ClientSecret = app.ClientSecret;
         row.RedirectUri  = app.RedirectUri;
+        row.OidcRedirectUris = SerializeUris(app.AdditionalRedirectUris);
+        row.IsPublicClient   = app.IsPublicClient;
+        row.RequirePkce      = app.RequirePkce;
         await db.SaveChangesAsync();
     }
 

@@ -20,6 +20,12 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbUserAuthorizedApp> UserAuthorizedApps { get; set; }
     public virtual DbSet<DbUserNote> UserNotes { get; set; }
     public virtual DbSet<DbUserPasskey> UserPasskeys { get; set; }
+    public virtual DbSet<DbGroup> Groups { get; set; }
+    public virtual DbSet<DbUserGroup> UserGroups { get; set; }
+    public virtual DbSet<DbAppGroupRule> AppGroupRules { get; set; }
+    public virtual DbSet<DbAppGroupClaim> AppGroupClaims { get; set; }
+    public virtual DbSet<DbOidcAuthorizationCode> OidcAuthorizationCodes { get; set; }
+    public virtual DbSet<DbOidcRefreshGrant> OidcRefreshGrants { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         

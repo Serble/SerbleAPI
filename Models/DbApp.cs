@@ -23,6 +23,21 @@ public class DbApp {
     
     public string RedirectUri { get; set; } = null!;
     
+    /// <summary>Additional OIDC redirect URIs as a JSON string array (legacy RedirectUri still applies).</summary>
+    public string? OidcRedirectUris { get; set; }
+    
+    /// <summary>Public (secret-less) client — must use PKCE instead of a client secret.</summary>
+    public bool IsPublicClient { get; set; }
+    
+    /// <summary>Require a PKCE challenge even for confidential clients.</summary>
+    public bool RequirePkce { get; set; }
+    
+    /// <summary>Admin-only access gate. Maps to <see cref="Data.Schemas.AppAccessPolicy"/>.</summary>
+    public int AccessPolicy { get; set; }
+    
+    /// <summary>Admin-only minimum PermLevel when AccessPolicy = RequireMinimumPermLevel.</summary>
+    public int? RequiredPermLevel { get; set; }
+    
     // navigation properties
     public DbUser OwnerNavigation { get; set; } = null!;
 }
