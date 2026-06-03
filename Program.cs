@@ -140,6 +140,17 @@ public static class Program {
             app.UseHsts();
         }
 
+        using (IServiceScope scope = app.Services.CreateScope()) {
+            SerbleDbContext db = scope.ServiceProvider.GetRequiredService<SerbleDbContext>();
+            if (db.Database.IsRelational()) {
+                db.Database.Migrate();
+            }
+            else {
+                db.Database.EnsureCreated();
+            }
+            db.SaveChanges();
+        }
+
         // Middleware order: cors/options -> redirects -> session -> auth -> controllers
         app.UseMiddleware<SerbleCorsMiddleware>();
         app.UseMiddleware<RedirectsMiddleware>();
