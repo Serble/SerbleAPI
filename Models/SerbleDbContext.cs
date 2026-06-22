@@ -24,6 +24,8 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbUserGroup> UserGroups { get; set; }
     public virtual DbSet<DbAppGroupRule> AppGroupRules { get; set; }
     public virtual DbSet<DbAppGroupClaim> AppGroupClaims { get; set; }
+    public virtual DbSet<DbServiceCatalogItem> ServiceCatalogItems { get; set; }
+    public virtual DbSet<DbServiceCatalogItemGroupRule> ServiceCatalogItemGroupRules { get; set; }
     public virtual DbSet<DbOidcAuthorizationCode> OidcAuthorizationCodes { get; set; }
     public virtual DbSet<DbOidcRefreshGrant> OidcRefreshGrants { get; set; }
 

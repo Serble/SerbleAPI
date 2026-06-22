@@ -43,6 +43,7 @@ public class GroupRepository(SerbleDbContext db) : IGroupRepository {
         await db.UserGroups.Where(g => g.GroupId == groupId).ExecuteDeleteAsync();
         await db.AppGroupRules.Where(r => r.GroupId == groupId).ExecuteDeleteAsync();
         await db.AppGroupClaims.Where(c => c.GroupId == groupId).ExecuteDeleteAsync();
+        await db.ServiceCatalogItemGroupRules.Where(r => r.GroupId == groupId).ExecuteDeleteAsync();
         await db.Groups.Where(g => g.Id == groupId).ExecuteDeleteAsync();
     }
 

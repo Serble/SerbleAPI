@@ -87,6 +87,7 @@ public static class Program {
         builder.Services.AddScoped<INoteRepository, NoteRepository>();
         builder.Services.AddScoped<IKvRepository, KvRepository>();
         builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+        builder.Services.AddScoped<IServiceCatalogRepository, ServiceCatalogRepository>();
         builder.Services.AddScoped<IAppAccessRepository, AppAccessRepository>();
         builder.Services.AddScoped<IOidcCodeRepository, OidcCodeRepository>();
         builder.Services.AddScoped<IOidcRefreshRepository, OidcRefreshRepository>();
