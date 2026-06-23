@@ -41,6 +41,8 @@ public class DbApp {
     /// <summary>Admin-only minimum PermLevel when AccessPolicy = RequireMinimumPermLevel.</summary>
     public int? RequiredPermLevel { get; set; }
     
+    public DateTime DateCreated { get; set; }
+    
     // navigation properties
     public DbUser OwnerNavigation { get; set; } = null!;
 }

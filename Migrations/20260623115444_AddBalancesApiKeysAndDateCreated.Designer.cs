@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SerbleAPI.Models;
 
@@ -11,9 +12,11 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Migrations
 {
     [DbContext(typeof(SerbleDbContext))]
-    partial class SerbleDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623115444_AddBalancesApiKeysAndDateCreated")]
+    partial class AddBalancesApiKeysAndDateCreated
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -477,39 +480,6 @@ namespace SerbleAPI.Migrations
                     b.ToTable("ServiceCatalogItemGroupRules");
                 });
 
-            modelBuilder.Entity("SerbleAPI.Models.DbTransaction", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<ulong>("Amount")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("FromBalanceId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("ToBalanceId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FromBalanceId");
-
-                    b.HasIndex("ToBalanceId");
-
-                    b.ToTable("Transactions");
-                });
-
             modelBuilder.Entity("SerbleAPI.Models.DbUser", b =>
                 {
                     b.Property<string>("Id")
@@ -804,23 +774,6 @@ namespace SerbleAPI.Migrations
                     b.Navigation("GroupNavigation");
 
                     b.Navigation("ServiceNavigation");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbTransaction", b =>
-                {
-                    b.HasOne("SerbleAPI.Models.DbBalance", "FromBalanceNavigation")
-                        .WithMany()
-                        .HasForeignKey("FromBalanceId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("SerbleAPI.Models.DbBalance", "ToBalanceNavigation")
-                        .WithMany()
-                        .HasForeignKey("ToBalanceId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("FromBalanceNavigation");
-
-                    b.Navigation("ToBalanceNavigation");
                 });
 
             modelBuilder.Entity("SerbleAPI.Models.DbUserAuthorizedApp", b =>

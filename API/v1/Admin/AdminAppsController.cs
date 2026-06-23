@@ -16,6 +16,7 @@ namespace SerbleAPI.API.v1.Admin;
 public class AdminAppsController(
     ILogger<AdminAppsController> logger,
     IAppRepository appRepo,
+    IBalanceRepository balanceRepo,
     IUserRepository userRepo) : ControllerManager {
 
     // -------- Stats --------
@@ -35,14 +36,20 @@ public class AdminAppsController(
     public async Task<ActionResult<IEnumerable<AdminAppView>>> Search(
         [FromQuery] string? query = null, [FromQuery] int limit = 25) {
         OAuthApp[] results = await appRepo.SearchApps(query ?? "", limit);
-        return Ok(results.Select(AdminAppView.From));
+        List<AdminAppView> views = new(results.Length);
+        foreach (OAuthApp a in results) {
+            Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, a.Id);
+            views.Add(AdminAppView.From(a, bal.Coins));
+        }
+        return Ok(views);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<AdminAppView>> Get(string id) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
-        return Ok(AdminAppView.From(app));
+        Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, id);
+        return Ok(AdminAppView.From(app, bal.Coins));
     }
 
     /// <summary>Find all apps owned by the specified user.</summary>
@@ -51,7 +58,12 @@ public class AdminAppsController(
         User? user = await userRepo.GetUser(userId);
         if (user == null) return NotFound("User not found");
         OAuthApp[] apps = await appRepo.GetOAuthAppsFromUser(userId);
-        return Ok(apps.Select(AdminAppView.From));
+        List<AdminAppView> views = new(apps.Length);
+        foreach (OAuthApp a in apps) {
+            Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, a.Id);
+            views.Add(AdminAppView.From(a, bal.Coins));
+        }
+        return Ok(views);
     }
 
     // -------- Edit --------
@@ -117,6 +129,64 @@ public class AdminAppsController(
         return Ok(new { success = true, clientSecret = app.ClientSecret });
     }
 
+    // -------- Coins (economy) --------
+
+    public class AppCoinBalanceResponse {
+        public string AppId { get; set; } = "";
+        public string BalanceId { get; set; } = "";
+        public ulong Coins { get; set; }
+    }
+
+    public class SetCoinsBody {
+        public ulong Balance { get; set; }
+    }
+
+    public class CoinAmountBody {
+        public ulong Amount { get; set; }
+    }
+
+    [HttpGet("{id}/coins")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<AppCoinBalanceResponse>> GetCoins(string id) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, id);
+        return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/set")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<AppCoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.App, id, body.Balance);
+        logger.LogInformation("Admin {AdminId} set coins of app {AppId} to {Balance}",
+            HttpContext.User.GetUserId(), id, body.Balance);
+        return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/add")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<AppCoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.App, id, body.Amount);
+        logger.LogInformation("Admin {AdminId} added {Amount} coins to app {AppId} (new balance {Balance})",
+            HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
+        return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/remove")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<AppCoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.App, id, body.Amount);
+        logger.LogInformation("Admin {AdminId} removed {Amount} coins from app {AppId} (new balance {Balance})",
+            HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
+        return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
+    }
+
     // -------- Delete --------
 
     [HttpDelete("{id}")]
@@ -142,14 +212,18 @@ public class AdminAppView {
     public string RedirectUri { get; set; } = "";
     public string ClientSecret { get; set; } = "";
     public bool IsOfficial { get; set; }
+    public ulong Coins { get; set; }
+    public DateTime DateCreated { get; set; }
 
-    public static AdminAppView From(OAuthApp a) => new() {
+    public static AdminAppView From(OAuthApp a, ulong coins = 0) => new() {
         Id           = a.Id,
         OwnerId      = a.OwnerId,
         Name         = a.Name,
         Description  = a.Description,
         RedirectUri  = a.RedirectUri,
         ClientSecret = a.ClientSecret,
-        IsOfficial   = a.IsOfficial
+        IsOfficial   = a.IsOfficial,
+        Coins        = coins,
+        DateCreated  = a.DateCreated
     };
 }

@@ -18,6 +18,8 @@ public class DbUserAuthorizedApp {
     [StringLength(128)]
     public string Scopes { get; set; } = null!;
     
+    public DateTime DateCreated { get; set; }
+    
     // navigation properties
     public DbUser UserNavigation { get; set; } = null!;
     public DbApp AppNavigation { get; set; } = null!;

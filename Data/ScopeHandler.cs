@@ -16,7 +16,8 @@ public static class ScopeHandler {
         "payment_info",
         "manage_account",
         "manage_apps",
-        "vault"
+        "vault",
+        "economy"
     };
     
     public static readonly string[] ScopeNames = {
@@ -27,7 +28,8 @@ public static class ScopeHandler {
         "Payment Information",
         "Account Management",
         "OAuth App Management",
-        "Vault Access"
+        "Vault Access",
+        "Economy"
     };
     
     public enum ScopesEnum {
@@ -38,13 +40,14 @@ public static class ScopeHandler {
         PaymentInfo,
         ManageAccount,
         ManageApps,
-        Vault
+        Vault,
+        Economy
     }
 
     // id, name
     public static List<(string, string)> ScopeList => Scopes.Select((t, i) => (t, ScopeNames[i])).ToList();
 
-    public static readonly string[] ScopeDescriptions = {
+    public static readonly string[] ScopeDescriptions = [
         "Allows full access to the account.",
         "Allows access the file host.",
         "Allows access to the account's information (Eg. Username, Email).",
@@ -53,8 +56,9 @@ public static class ScopeHandler {
         "including viewing the last 4 digits of their credit card and viewing purchase history.",
         "Grants the ability to control the user's account, including changing their email, and username. Only you can change your password.",
         "Allows management over all of your OAuth application, this does not allow the authorization of apps.",
-        "Allows access to the user's vault, including read and write access."
-    };
+        "Allows access to the user's vault, including read and write access.",
+        "Allows access to the user's coin balance and economy features."
+    ];
 
     public static string ListOfScopeIdsToString(IEnumerable<string> scopeIds) {
         return Scopes.Aggregate("", (current, scope) => current + (scopeIds.Contains(scope) ? "1" : "0"));

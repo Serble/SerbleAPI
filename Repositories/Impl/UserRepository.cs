@@ -19,7 +19,8 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         Language        = r.Language,
         TotpEnabled     = r.TotpEnabled,
         TotpSecret      = r.TotpSecret,
-        PasswordSalt    = r.PasswordSalt
+        PasswordSalt    = r.PasswordSalt,
+        DateCreated     = r.DateCreated
     };
     
     private User? MapWithRepos(DbUser? r) {
@@ -48,6 +49,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
 
     public async Task<User> AddUser(User user) {
         user.Id = Guid.NewGuid().ToString();
+        user.DateCreated = DateTime.UtcNow;
         db.Users.Add(new DbUser {
             Id             = user.Id,
             Username       = user.Username,
@@ -59,7 +61,8 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             Language       = user.Language,
             TotpEnabled    = user.TotpEnabled,
             TotpSecret     = user.TotpSecret,
-            PasswordSalt   = user.PasswordSalt
+            PasswordSalt   = user.PasswordSalt,
+            DateCreated    = user.DateCreated
         });
         await db.SaveChangesAsync();
         return user;
@@ -86,6 +89,10 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         if (row == null) return;
         // remove authorised apps too
         await db.UserAuthorizedApps.Where(a => a.UserId == userId).ExecuteDeleteAsync();
+        // remove balances too
+        await db.Balances
+            .Where(b => b.OwnerType == (int)BalanceOwnerType.User && b.OwnerId == userId)
+            .ExecuteDeleteAsync();
         db.Users.Remove(row);
         await db.SaveChangesAsync();
     }
@@ -121,7 +128,8 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         db.UserAuthorizedApps.Add(new DbUserAuthorizedApp {
             UserId = userId,
             AppId  = app.AppId,
-            Scopes = app.Scopes
+            Scopes = app.Scopes,
+            DateCreated = app.DateCreated == default ? DateTime.UtcNow : app.DateCreated
         });
         await db.SaveChangesAsync();
     }
@@ -129,7 +137,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
     public Task<AuthorizedApp[]> GetAuthorizedApps(string userId) =>
         db.UserAuthorizedApps
             .Where(a => a.UserId == userId)
-            .Select(a => new AuthorizedApp(a.AppId!, a.Scopes!))
+            .Select(a => new AuthorizedApp(a.AppId!, a.Scopes!) { DateCreated = a.DateCreated })
             .ToArrayAsync();
 
     public Task DeleteAuthorizedApp(string userId, string appId) {

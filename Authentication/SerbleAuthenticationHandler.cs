@@ -3,6 +3,8 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using SerbleAPI.Repositories;
+using SerbleAPI.Repositories.Impl;
 using SerbleAPI.Services;
 
 namespace SerbleAPI.Authentication;
@@ -31,37 +33,39 @@ public class SerbleAuthenticationHandler(
     IOptionsMonitor<SerbleAuthenticationOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    ITokenService tokens)
+    ITokenService tokens,
+    IAppApiKeyRepository apiKeys)
     : AuthenticationHandler<SerbleAuthenticationOptions>(options, logger, encoder) {
 
     public const string SchemeName = "Serble";
 
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync() {
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync() {
         // Primary: custom SerbleAuth header
         if (Request.Headers.TryGetValue("SerbleAuth", out StringValues serbleAuthValues))
-            return Task.FromResult(HandleSerbleAuthHeader(serbleAuthValues.ToString()));
+            return await HandleSerbleAuthHeader(serbleAuthValues.ToString());
 
         // Secondary: standard Authorization header
         if (Request.Headers.TryGetValue("Authorization", out StringValues authValues)) {
-            return Task.FromResult(HandleAuthorizationHeader(authValues.ToString()));
+            return await HandleAuthorizationHeader(authValues.ToString());
         }
 
-        return Task.FromResult(AuthenticateResult.NoResult());
+        return AuthenticateResult.NoResult();
     }
 
-    private AuthenticateResult HandleSerbleAuthHeader(string header) {
+    private async Task<AuthenticateResult> HandleSerbleAuthHeader(string header) {
         string[] parts = header.Split(' ', 2);
         if (parts.Length != 2)
             return AuthenticateResult.Fail("SerbleAuth header must be in format 'TYPE TOKEN'");
 
         return parts[0] switch {
-            "User" => AuthenticateAsUser(parts[1]),
-            "App"  => AuthenticateAsApp(parts[1]),
-            _      => AuthenticateResult.Fail($"Unknown SerbleAuth type '{parts[0]}'")
+            "User"   => AuthenticateAsUser(parts[1]),
+            "App"    => AuthenticateAsApp(parts[1]),
+            "ApiKey" => await AuthenticateAsApiKey(parts[1]),
+            _        => AuthenticateResult.Fail($"Unknown SerbleAuth type '{parts[0]}'")
         };
     }
 
-    private AuthenticateResult HandleAuthorizationHeader(string header) {
+    private async Task<AuthenticateResult> HandleAuthorizationHeader(string header) {
         string[] parts = header.Split(' ', 2);
         if (parts.Length != 2) {
             return AuthenticateResult.NoResult();
@@ -74,9 +78,25 @@ public class SerbleAuthenticationHandler(
 
         string token = parts[1];
 
+        // App API keys have a recognisable prefix — authenticate the app as itself.
+        if (token.StartsWith(AppApiKeyRepository.KeyPrefixLiteral, StringComparison.Ordinal))
+            return await AuthenticateAsApiKey(token);
+
         // Try user token first, fall back to app token
         AuthenticateResult userResult = AuthenticateAsUser(token);
         return userResult.Succeeded ? userResult : AuthenticateAsApp(token);
+    }
+
+    private async Task<AuthenticateResult> AuthenticateAsApiKey(string key) {
+        (string appId, string keyId)? resolved = await apiKeys.ResolveKey(key);
+        if (resolved == null)
+            return AuthenticateResult.Fail("Invalid app API key");
+
+        return BuildTicket([
+            new Claim("appid",     resolved.Value.appId),
+            new Claim("auth_type", "ApiKey"),
+            new Claim("apikeyid",  resolved.Value.keyId)
+        ]);
     }
 
     private AuthenticateResult AuthenticateAsUser(string token) {

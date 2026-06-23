@@ -38,4 +38,6 @@ public class DbUser {
     
     [StringLength(64)]
     public string? PasswordSalt { get; set; }
+    
+    public DateTime DateCreated { get; set; }
 }

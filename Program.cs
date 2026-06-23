@@ -81,6 +81,9 @@ public static class Program {
 
         // db repos
         builder.Services.AddScoped<IUserRepository, UserRepository>();
+        builder.Services.AddScoped<IBalanceRepository, BalanceRepository>();
+        builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+        builder.Services.AddScoped<IAppApiKeyRepository, AppApiKeyRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
         builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
         builder.Services.AddScoped<IProductRepository, ProductRepository>();
@@ -116,10 +119,18 @@ public static class Program {
             opts.AddPolicy("OfficialAppOnly", p =>
                 p.RequireAuthenticatedUser()
                  .AddRequirements(new OfficialAppOnlyRequirement()));
+            opts.AddPolicy("AppOnly", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new AppKeyOnlyRequirement()));
+            opts.AddPolicy("EconomyAccess", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new EconomyAccessRequirement()));
         });
 
         builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
         builder.Services.AddScoped<IAuthorizationHandler, OfficialAppAuthorizationHandler>();
+        builder.Services.AddScoped<IAuthorizationHandler, AppKeyOnlyAuthorizationHandler>();
+        builder.Services.AddScoped<IAuthorizationHandler, EconomyAccessAuthorizationHandler>();
 
         builder.WebHost.UseUrls(apiSettings.BindUrl);  // move IP binding to config because I hate launchSettings.json
         

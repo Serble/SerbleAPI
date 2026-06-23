@@ -3,10 +3,12 @@ namespace SerbleAPI.Data.Schemas;
 public class AuthorizedApp {
     public string AppId { get; }
     public string Scopes { get; }
+    public DateTime DateCreated { get; set; }
     
     public AuthorizedApp(string appId, string scopes) {
         AppId = appId;
         Scopes = scopes;
+        DateCreated = DateTime.UtcNow;
     }
 
     public static bool operator ==(AuthorizedApp a1, AuthorizedApp a2) {

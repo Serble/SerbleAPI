@@ -12,6 +12,7 @@ public class OAuthApp {
     public bool IsPublicClient { get; set; }
     public bool RequirePkce { get; set; }
     public bool IsOfficial { get; set; }
+    public DateTime DateCreated { get; set; }
 
     public OAuthApp(string ownerId) {
         Name = "";
@@ -21,6 +22,7 @@ public class OAuthApp {
         ClientSecret = Guid.NewGuid().ToString();
         RedirectUri = "";
         AdditionalRedirectUris = [];
+        DateCreated = DateTime.UtcNow;
     }
     
     public OAuthApp CycleClientSecret() {

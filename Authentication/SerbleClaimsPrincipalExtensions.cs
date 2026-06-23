@@ -37,6 +37,14 @@ public static class SerbleClaimsPrincipalExtensions {
     public static bool IsApp(this ClaimsPrincipal p)
         => p.FindFirstValue("auth_type") == "App";
 
+    /// <summary>Whether the request authenticated with an app API key (app acting as itself).</summary>
+    public static bool IsAppKey(this ClaimsPrincipal p)
+        => p.FindFirstValue("auth_type") == "ApiKey";
+
+    /// <summary>The API key id the request authenticated with, or null.</summary>
+    public static string? GetApiKeyId(this ClaimsPrincipal p)
+        => p.FindFirstValue("apikeyid");
+
     /// <summary>The auth type as the legacy enum value.</summary>
     public static SerbleAuthorizationHeaderType GetAuthType(this ClaimsPrincipal p)
         => p.FindFirstValue("auth_type") switch {

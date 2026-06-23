@@ -20,6 +20,7 @@ namespace SerbleAPI.API.v1.Admin;
 public class AdminUsersController(
     ILogger<AdminUsersController> logger,
     IUserRepository userRepo,
+    IBalanceRepository balanceRepo,
     IPasskeyRepository passkeyRepo,
     ITokenService tokens) : ControllerManager {
 
@@ -49,14 +50,20 @@ public class AdminUsersController(
     public async Task<ActionResult<IEnumerable<AdminUserView>>> Search(
         [FromQuery] string? query = null, [FromQuery] int limit = 25) {
         User[] results = await userRepo.SearchUsers(query ?? "", limit);
-        return Ok(results.Select(AdminUserView.From));
+        List<AdminUserView> views = new(results.Length);
+        foreach (User u in results) {
+            Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.User, u.Id);
+            views.Add(AdminUserView.From(u, bal.Coins));
+        }
+        return Ok(views);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<AdminUserView>> Get(string id) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
-        return Ok(AdminUserView.From(user));
+        Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.User, user.Id);
+        return Ok(AdminUserView.From(user, bal.Coins));
     }
 
     // -------- Login as user --------
@@ -220,6 +227,63 @@ public class AdminUsersController(
         return Ok(new { success = true });
     }
 
+    // -------- Coins (economy) --------
+
+    public class CoinBalanceResponse {
+        public string UserId { get; set; } = "";
+        public ulong Coins { get; set; }
+    }
+
+    public class SetCoinsBody {
+        public ulong Balance { get; set; }
+    }
+
+    public class CoinAmountBody {
+        public ulong Amount { get; set; }
+    }
+
+    [HttpGet("{id}/coins")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<CoinBalanceResponse>> GetCoins(string id) {
+        User? user = await userRepo.GetUser(id);
+        if (user == null) return NotFound();
+        Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.User, id);
+        return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/set")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<CoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
+        User? user = await userRepo.GetUser(id);
+        if (user == null) return NotFound();
+        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.User, id, body.Balance);
+        logger.LogInformation("Admin {AdminId} set coins of user {TargetId} to {Balance}",
+            HttpContext.User.GetUserId(), id, body.Balance);
+        return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/add")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<CoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
+        User? user = await userRepo.GetUser(id);
+        if (user == null) return NotFound();
+        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.User, id, body.Amount);
+        logger.LogInformation("Admin {AdminId} added {Amount} coins to user {TargetId} (new balance {Balance})",
+            HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
+        return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
+    }
+
+    [HttpPost("{id}/coins/remove")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<CoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
+        User? user = await userRepo.GetUser(id);
+        if (user == null) return NotFound();
+        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.User, id, body.Amount);
+        logger.LogInformation("Admin {AdminId} removed {Amount} coins from user {TargetId} (new balance {Balance})",
+            HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
+        return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
+    }
+
     private bool IsSelf(string id) => HttpContext.User.GetUserId() == id;
 }
 
@@ -237,8 +301,10 @@ public class AdminUserView {
     public bool TotpEnabled { get; set; }
     public string? Language { get; set; }
     public bool HasPasswordSalt { get; set; }
+    public ulong Coins { get; set; }
+    public DateTime DateCreated { get; set; }
 
-    public static AdminUserView From(User u) => new() {
+    public static AdminUserView From(User u, ulong coins = 0) => new() {
         Id              = u.Id,
         Username        = u.Username,
         Email           = u.Email,
@@ -246,6 +312,8 @@ public class AdminUserView {
         PermLevel       = u.PermLevel,
         TotpEnabled     = u.TotpEnabled,
         Language        = u.Language,
-        HasPasswordSalt = !string.IsNullOrEmpty(u.PasswordSalt)
+        HasPasswordSalt = !string.IsNullOrEmpty(u.PasswordSalt),
+        Coins           = coins,
+        DateCreated     = u.DateCreated
     };
 }

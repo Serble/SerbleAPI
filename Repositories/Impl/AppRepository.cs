@@ -16,7 +16,8 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         AdditionalRedirectUris = DeserializeUris(r.OidcRedirectUris),
         IsPublicClient = r.IsPublicClient,
         RequirePkce    = r.RequirePkce,
-        IsOfficial     = r.IsOfficial
+        IsOfficial     = r.IsOfficial,
+        DateCreated    = r.DateCreated
     };
 
     private static List<string> DeserializeUris(string? json) {
@@ -55,7 +56,8 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
             OidcRedirectUris = SerializeUris(app.AdditionalRedirectUris),
             IsPublicClient   = app.IsPublicClient,
             RequirePkce      = app.RequirePkce,
-            IsOfficial       = app.IsOfficial
+            IsOfficial       = app.IsOfficial,
+            DateCreated      = app.DateCreated == default ? DateTime.UtcNow : app.DateCreated
         });
         return db.SaveChangesAsync();
     }
@@ -78,6 +80,10 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
     public async Task DeleteOAuthApp(string appId) {
         DbApp? row = await db.Apps.FirstOrDefaultAsync(a => a.Id == appId);
         if (row == null) return;
+        // remove the app's balances (api keys cascade via FK)
+        await db.Balances
+            .Where(b => b.OwnerType == (int)BalanceOwnerType.App && b.OwnerId == appId)
+            .ExecuteDeleteAsync();
         db.Apps.Remove(row);
         await db.SaveChangesAsync();
     }

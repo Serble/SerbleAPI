@@ -25,6 +25,7 @@ public class User {
     public bool TotpEnabled { get; set; }
     public string? TotpSecret { get; set; }  // 128 bytes
     public string? PasswordSalt { get; set; }  // 64 bytes, null for people who registered before this was added
+    public DateTime DateCreated { get; set; }
 
     private AuthorizedApp[]? _obtainedAuthedApps;
     private AuthorizedApp[]? _originalAuthedApps;
