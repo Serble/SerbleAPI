@@ -88,6 +88,7 @@ public class AdminServiceCatalogView {
     public string Url { get; set; } = "";
     public string? IconUrl { get; set; }
     public ServiceCatalogVisibilityMode VisibilityMode { get; set; }
+    public bool New { get; set; }
     public string[] AllowedGroupIds { get; set; } = [];
 
     public static AdminServiceCatalogView From(ServiceCatalogItem service) => new() {
@@ -97,6 +98,7 @@ public class AdminServiceCatalogView {
         Url = service.Url,
         IconUrl = service.IconUrl,
         VisibilityMode = service.VisibilityMode,
+        New = service.New,
         AllowedGroupIds = service.AllowedGroupIds ?? []
     };
 
@@ -107,6 +109,7 @@ public class AdminServiceCatalogView {
         Url = Url,
         IconUrl = IconUrl,
         VisibilityMode = VisibilityMode,
+        New = New,
         AllowedGroupIds = AllowedGroupIds ?? []
     };
 }

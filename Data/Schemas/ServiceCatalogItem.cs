@@ -12,5 +12,6 @@ public class ServiceCatalogItem {
     public string Url { get; set; } = null!;
     public string? IconUrl { get; set; }
     public ServiceCatalogVisibilityMode VisibilityMode { get; set; }
+    public bool New { get; set; }
     public string[] AllowedGroupIds { get; set; } = [];
 }

@@ -18,4 +18,6 @@ public class DbServiceCatalogItem {
     public string? IconUrl { get; set; }
 
     public int VisibilityMode { get; set; }
+
+    public bool New { get; set; }
 }

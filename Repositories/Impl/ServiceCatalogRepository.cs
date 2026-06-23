@@ -13,6 +13,7 @@ public class ServiceCatalogRepository(SerbleDbContext db, IGroupRepository group
         Url = service.Url,
         IconUrl = service.IconUrl,
         VisibilityMode = (ServiceCatalogVisibilityMode)service.VisibilityMode,
+        New = service.New,
         AllowedGroupIds = allowedGroupIds
     };
 
@@ -54,7 +55,8 @@ public class ServiceCatalogRepository(SerbleDbContext db, IGroupRepository group
             Description = service.Description,
             Url = service.Url,
             IconUrl = service.IconUrl,
-            VisibilityMode = (int)service.VisibilityMode
+            VisibilityMode = (int)service.VisibilityMode,
+            New = service.New
         });
         foreach (string groupId in service.AllowedGroupIds.Distinct()) {
             db.ServiceCatalogItemGroupRules.Add(new DbServiceCatalogItemGroupRule {
@@ -74,6 +76,7 @@ public class ServiceCatalogRepository(SerbleDbContext db, IGroupRepository group
         row.Url = service.Url;
         row.IconUrl = service.IconUrl;
         row.VisibilityMode = (int)service.VisibilityMode;
+        row.New = service.New;
 
         await db.ServiceCatalogItemGroupRules.Where(r => r.ServiceId == service.Id).ExecuteDeleteAsync();
         foreach (string groupId in service.AllowedGroupIds.Distinct()) {

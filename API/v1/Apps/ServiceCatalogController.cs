@@ -32,12 +32,14 @@ public class PublicServiceCatalogView {
     public string Description { get; set; } = "";
     public string Url { get; set; } = "";
     public string? IconUrl { get; set; }
+    public bool New { get; set; }
 
     public static PublicServiceCatalogView From(ServiceCatalogItem service) => new() {
         Id = service.Id,
         Name = service.Name,
         Description = service.Description,
         Url = service.Url,
-        IconUrl = service.IconUrl
+        IconUrl = service.IconUrl,
+        New = service.New
     };
 }
