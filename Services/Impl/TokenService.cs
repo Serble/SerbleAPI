@@ -83,17 +83,20 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     // Access Tokens
     // Claims:
     // - userid
-    public string GenerateAccessToken(string userId, string scope) {
+    // - appid (the OAuth app/client the token was issued to)
+    public string GenerateAccessToken(string userId, string appId, string scope) {
         Dictionary<string, string> claims = new() {
             { "userid", userId },
+            { "appid", appId },
             { "scope", scope},
             { "type", "oauth-access" }
         };
         return GenerateToken(claims, 1);
     }
     
-    public bool ValidateAccessToken(string token, out string? userId, out string scope) {
+    public bool ValidateAccessToken(string token, out string? userId, out string? appId, out string scope) {
         userId = null;
+        appId = null;
         scope = "";
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
@@ -104,6 +107,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
             if (!claims!.TryGetValue("userid", out userId) 
                 || !claims.TryGetValue("type", out string? type) 
                 || !claims.TryGetValue("scope", out scope!)) return false;
+            // appid is optional for backwards compatibility with tokens issued before it existed.
+            claims.TryGetValue("appid", out appId);
             return type == "oauth-access";
         }
         catch (Exception e) {

@@ -8,8 +8,8 @@ public interface ITokenService {
     bool ValidateAuthorizationToken(string token, string appId, out string? userId, out string scopeString,
         out string reason);
 
-    string GenerateAccessToken(string userId, string scope);
-    bool ValidateAccessToken(string token, out string? userId, out string scope);
+    string GenerateAccessToken(string userId, string appId, string scope);
+    bool ValidateAccessToken(string token, out string? userId, out string? appId, out string scope);
 
     string GenerateRefreshToken(string userId, string appId, string scope);
     bool ValidateRefreshToken(string token, string appId, out string? userId, out string scope);

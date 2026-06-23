@@ -113,9 +113,13 @@ public static class Program {
             opts.AddPolicy("AdminOnly", p =>
                 p.RequireAuthenticatedUser()
                  .AddRequirements(new AdminOnlyRequirement()));
+            opts.AddPolicy("OfficialAppOnly", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new OfficialAppOnlyRequirement()));
         });
 
         builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
+        builder.Services.AddScoped<IAuthorizationHandler, OfficialAppAuthorizationHandler>();
 
         builder.WebHost.UseUrls(apiSettings.BindUrl);  // move IP binding to config because I hate launchSettings.json
         

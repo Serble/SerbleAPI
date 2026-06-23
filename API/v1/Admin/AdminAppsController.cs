@@ -83,6 +83,27 @@ public class AdminAppsController(
         return Ok(AdminAppView.From(app));
     }
 
+    // -------- Official flag --------
+
+    public class OfficialBody {
+        public bool IsOfficial { get; set; }
+    }
+
+    /// <summary>
+    /// Mark or unmark an app as official (first-party). Admin-only and settable
+    /// regardless of the app's owner.
+    /// </summary>
+    [HttpPut("{id}/official")]
+    public async Task<ActionResult<AdminAppView>> SetOfficial(string id, [FromBody] OfficialBody body) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        app.IsOfficial = body.IsOfficial;
+        await appRepo.UpdateOAuthApp(app);
+        logger.LogInformation("Admin {AdminId} set official={IsOfficial} for app {AppId}",
+            HttpContext.User.GetUserId(), body.IsOfficial, id);
+        return Ok(AdminAppView.From(app));
+    }
+
     // -------- Cycle client secret --------
 
     [HttpPost("{id}/cycle-secret")]
@@ -120,6 +141,7 @@ public class AdminAppView {
     public string Description { get; set; } = "";
     public string RedirectUri { get; set; } = "";
     public string ClientSecret { get; set; } = "";
+    public bool IsOfficial { get; set; }
 
     public static AdminAppView From(OAuthApp a) => new() {
         Id           = a.Id,
@@ -127,6 +149,7 @@ public class AdminAppView {
         Name         = a.Name,
         Description  = a.Description,
         RedirectUri  = a.RedirectUri,
-        ClientSecret = a.ClientSecret
+        ClientSecret = a.ClientSecret,
+        IsOfficial   = a.IsOfficial
     };
 }

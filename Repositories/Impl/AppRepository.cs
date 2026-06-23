@@ -15,7 +15,8 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         RedirectUri  = r.RedirectUri  ?? "",
         AdditionalRedirectUris = DeserializeUris(r.OidcRedirectUris),
         IsPublicClient = r.IsPublicClient,
-        RequirePkce    = r.RequirePkce
+        RequirePkce    = r.RequirePkce,
+        IsOfficial     = r.IsOfficial
     };
 
     private static List<string> DeserializeUris(string? json) {
@@ -53,7 +54,8 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
             RedirectUri  = app.RedirectUri,
             OidcRedirectUris = SerializeUris(app.AdditionalRedirectUris),
             IsPublicClient   = app.IsPublicClient,
-            RequirePkce      = app.RequirePkce
+            RequirePkce      = app.RequirePkce,
+            IsOfficial       = app.IsOfficial
         });
         return db.SaveChangesAsync();
     }
@@ -69,6 +71,7 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         row.OidcRedirectUris = SerializeUris(app.AdditionalRedirectUris);
         row.IsPublicClient   = app.IsPublicClient;
         row.RequirePkce      = app.RequirePkce;
+        row.IsOfficial       = app.IsOfficial;
         await db.SaveChangesAsync();
     }
 

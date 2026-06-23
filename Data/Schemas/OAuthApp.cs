@@ -11,6 +11,7 @@ public class OAuthApp {
     public List<string> AdditionalRedirectUris { get; set; }
     public bool IsPublicClient { get; set; }
     public bool RequirePkce { get; set; }
+    public bool IsOfficial { get; set; }
 
     public OAuthApp(string ownerId) {
         Name = "";

@@ -32,6 +32,9 @@ public class DbApp {
     /// <summary>Require a PKCE challenge even for confidential clients.</summary>
     public bool RequirePkce { get; set; }
     
+    /// <summary>Admin-only flag marking the app as an official, first-party application.</summary>
+    public bool IsOfficial { get; set; }
+    
     /// <summary>Admin-only access gate. Maps to <see cref="Data.Schemas.AppAccessPolicy"/>.</summary>
     public int AccessPolicy { get; set; }
     

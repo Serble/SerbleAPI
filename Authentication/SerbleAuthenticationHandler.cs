@@ -92,14 +92,17 @@ public class SerbleAuthenticationHandler(
     }
 
     private AuthenticateResult AuthenticateAsApp(string token) {
-        if (!tokens.ValidateAccessToken(token, out string? appUserId, out string scope))
+        if (!tokens.ValidateAccessToken(token, out string? appUserId, out string? appId, out string scope))
             return AuthenticateResult.Fail("Invalid app access token");
 
-        return BuildTicket([
+        List<Claim> claims = [
             new Claim("userid",    appUserId!),
             new Claim("auth_type", "App"),
             new Claim("scope",     scope)
-        ]);
+        ];
+        // appid is absent on tokens issued before it was added; official-app checks treat those as non-official.
+        if (!string.IsNullOrEmpty(appId)) claims.Add(new Claim("appid", appId));
+        return BuildTicket(claims);
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {

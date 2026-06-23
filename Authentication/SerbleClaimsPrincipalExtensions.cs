@@ -24,6 +24,11 @@ public static class SerbleClaimsPrincipalExtensions {
     public static bool HasScope(this ClaimsPrincipal p, ScopeHandler.ScopesEnum scope)
         => p.GetScopeString().SerbleHasScope(scope);
 
+    /// <summary>The OAuth app/client ID the token was issued to, or null for user tokens
+    /// (and for app tokens issued before the appid claim existed).</summary>
+    public static string? GetAppId(this ClaimsPrincipal p)
+        => p.FindFirstValue("appid");
+
     /// <summary>Whether the token was issued directly to a user (not an OAuth app).</summary>
     public static bool IsUser(this ClaimsPrincipal p)
         => p.FindFirstValue("auth_type") == "User";

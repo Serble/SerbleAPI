@@ -7,6 +7,7 @@ public class SanitisedOAuthApp {
     public string Name { get; set; }
     public string Description { get; set; }
     public string RedirectUri { get; set; }
+    public bool IsOfficial { get; set; }
 
     public SanitisedOAuthApp(OAuthApp app) {
         OwnerId = app.OwnerId;
@@ -14,6 +15,7 @@ public class SanitisedOAuthApp {
         Name = app.Name;
         Description = app.Description;
         RedirectUri = app.RedirectUri;
+        IsOfficial = app.IsOfficial;
     }
 
 }

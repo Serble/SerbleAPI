@@ -49,7 +49,7 @@ public class OAuthTokenController(
 
         return Ok(new AccessTokenResponse {
             ExpiresIn = 87600,
-            AccessToken = tokens.GenerateAccessToken(userId!, scope),
+            AccessToken = tokens.GenerateAccessToken(userId!, client_id, scope),
             RefreshToken = tokens.GenerateRefreshToken(userId!, client_id, scope),
             TokenType = "bearer"
         });
@@ -97,7 +97,7 @@ public class OAuthTokenController(
 
         return Ok(new AccessTokenResponse {
             ExpiresIn = 1,
-            AccessToken = tokens.GenerateAccessToken(user.Id, scope),
+            AccessToken = tokens.GenerateAccessToken(user.Id, client_id, scope),
             RefreshToken = refresh_token,
             TokenType = "bearer"
         });
