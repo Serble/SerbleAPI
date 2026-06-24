@@ -155,7 +155,7 @@ public class AdminAppsController(
     }
 
     [HttpPost("{id}/coins/set")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<AppCoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -166,7 +166,7 @@ public class AdminAppsController(
     }
 
     [HttpPost("{id}/coins/add")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<AppCoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -177,7 +177,7 @@ public class AdminAppsController(
     }
 
     [HttpPost("{id}/coins/remove")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<AppCoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();

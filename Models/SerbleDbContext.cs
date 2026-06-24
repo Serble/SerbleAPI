@@ -20,6 +20,7 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbUserAuthorizedApp> UserAuthorizedApps { get; set; }
     public virtual DbSet<DbBalance> Balances { get; set; }
     public virtual DbSet<DbTransaction> Transactions { get; set; }
+    public virtual DbSet<DbTransactionProposal> TransactionProposals { get; set; }
     public virtual DbSet<DbAppApiKey> AppApiKeys { get; set; }
     public virtual DbSet<DbUserNote> UserNotes { get; set; }
     public virtual DbSet<DbUserPasskey> UserPasskeys { get; set; }

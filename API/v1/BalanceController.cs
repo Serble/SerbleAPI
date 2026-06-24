@@ -14,8 +14,10 @@ namespace SerbleAPI.API.v1;
 ///   - user token / OAuth delegated token → the user's balance (an app acting for a user
 ///     operates on that user's balance, provided it holds the economy scope).
 ///
-/// Authorization uses the <c>EconomyAccess</c> policy: API-key apps pass automatically, while
-/// user/OAuth principals must hold the <c>economy</c> scope.
+/// Authorization uses the <c>EconomyAccess</c> policy for reads; the <c>transfer</c> action
+/// additionally requires the <c>EconomyManage</c> policy (the <c>manage_economy</c> scope, or an
+/// app API key). API-key apps pass both automatically, while user/OAuth principals must hold the
+/// <c>economy</c> scope to read and <c>manage_economy</c> to transfer.
 /// </summary>
 [ApiController]
 [Route("api/v1/balance")]
@@ -102,6 +104,7 @@ public class BalanceController(
     /// single atomic operation that also writes an audit record.
     /// </summary>
     [HttpPost("transfer")]
+    [Authorize(Policy = "EconomyManage")]
     public async Task<ActionResult<TransferResponse>> Transfer([FromBody] TransferBody body) {
         if (ResolveOwner() is not { } owner) return Unauthorized();
         if (body.Amount == 0) return BadRequest("Amount must be greater than zero.");

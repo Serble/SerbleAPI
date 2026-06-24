@@ -63,9 +63,17 @@ public static class Program {
             options.Cookie.IsEssential = true;
         });
         
-        builder.Services.AddDbContext<SerbleDbContext>(options =>
-            options.UseMySql(builder.Configuration.GetConnectionString("MySql"),
-                ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("MySql"))));
+        builder.Services.AddDbContext<SerbleDbContext>(options => {
+            string? mySqlConnection = builder.Configuration.GetConnectionString("MySql");
+            // EF design-time tooling resolves the context from the application service provider,
+            // so AutoDetect would try to open a real connection during `migrations add`. When the
+            // tooling sets SERBLE_EF_DESIGNTIME=1 we use a fixed server version instead so
+            // scaffolding never needs a live database. Runtime behaviour is unchanged.
+            ServerVersion serverVersion = Environment.GetEnvironmentVariable("SERBLE_EF_DESIGNTIME") == "1"
+                ? new MySqlServerVersion(new Version(8, 0, 24))
+                : ServerVersion.AutoDetect(mySqlConnection);
+            options.UseMySql(mySqlConnection, serverVersion);
+        });
 
         builder.Services.AddScoped<IAntiSpamService, AntiSpamService>();
         builder.Services.AddScoped<IGoogleReCaptchaService, GoogleReCaptchaService>();
@@ -83,6 +91,7 @@ public static class Program {
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IBalanceRepository, BalanceRepository>();
         builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+        builder.Services.AddScoped<ITransactionProposalRepository, TransactionProposalRepository>();
         builder.Services.AddScoped<IAppApiKeyRepository, AppApiKeyRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
         builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
@@ -122,15 +131,23 @@ public static class Program {
             opts.AddPolicy("AppOnly", p =>
                 p.RequireAuthenticatedUser()
                  .AddRequirements(new AppKeyOnlyRequirement()));
+            opts.AddPolicy("OfficialAppKeyOnly", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new OfficialAppKeyOnlyRequirement()));
             opts.AddPolicy("EconomyAccess", p =>
                 p.RequireAuthenticatedUser()
                  .AddRequirements(new EconomyAccessRequirement()));
+            opts.AddPolicy("EconomyManage", p =>
+                p.RequireAuthenticatedUser()
+                 .AddRequirements(new EconomyManageRequirement()));
         });
 
         builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
         builder.Services.AddScoped<IAuthorizationHandler, OfficialAppAuthorizationHandler>();
         builder.Services.AddScoped<IAuthorizationHandler, AppKeyOnlyAuthorizationHandler>();
+        builder.Services.AddScoped<IAuthorizationHandler, OfficialAppKeyOnlyAuthorizationHandler>();
         builder.Services.AddScoped<IAuthorizationHandler, EconomyAccessAuthorizationHandler>();
+        builder.Services.AddScoped<IAuthorizationHandler, EconomyManageAuthorizationHandler>();
 
         builder.WebHost.UseUrls(apiSettings.BindUrl);  // move IP binding to config because I hate launchSettings.json
         

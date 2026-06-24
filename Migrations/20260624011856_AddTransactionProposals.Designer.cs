@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SerbleAPI.Models;
 
@@ -11,9 +12,11 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Migrations
 {
     [DbContext(typeof(SerbleDbContext))]
-    partial class SerbleDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260624011856_AddTransactionProposals")]
+    partial class AddTransactionProposals
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -545,10 +548,6 @@ namespace SerbleAPI.Migrations
 
                     b.Property<int>("RecipientType")
                         .HasColumnType("int");
-
-                    b.Property<string>("RedirectUri")
-                        .HasMaxLength(2048)
-                        .HasColumnType("varchar(2048)");
 
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("datetime(6)");

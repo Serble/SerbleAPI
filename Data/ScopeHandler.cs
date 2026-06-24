@@ -17,7 +17,8 @@ public static class ScopeHandler {
         "manage_account",
         "manage_apps",
         "vault",
-        "economy"
+        "economy",
+        "manage_economy"
     };
     
     public static readonly string[] ScopeNames = {
@@ -29,7 +30,8 @@ public static class ScopeHandler {
         "Account Management",
         "OAuth App Management",
         "Vault Access",
-        "Economy"
+        "Economy",
+        "Economy Management"
     };
     
     public enum ScopesEnum {
@@ -41,7 +43,8 @@ public static class ScopeHandler {
         ManageAccount,
         ManageApps,
         Vault,
-        Economy
+        Economy,
+        ManageEconomy
     }
 
     // id, name
@@ -57,7 +60,8 @@ public static class ScopeHandler {
         "Grants the ability to control the user's account, including changing their email, and username. Only you can change your password.",
         "Allows management over all of your OAuth application, this does not allow the authorization of apps.",
         "Allows access to the user's vault, including read and write access.",
-        "Allows access to the user's coin balance and economy features."
+        "Allows read-only access to the user's coin balance and transaction history.",
+        "Allows modifying the user's coin balance without consent, including transferring coins out."
     ];
 
     public static string ListOfScopeIdsToString(IEnumerable<string> scopeIds) {

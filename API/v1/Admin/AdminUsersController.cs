@@ -252,7 +252,7 @@ public class AdminUsersController(
     }
 
     [HttpPost("{id}/coins/set")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<CoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -263,7 +263,7 @@ public class AdminUsersController(
     }
 
     [HttpPost("{id}/coins/add")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<CoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -274,7 +274,7 @@ public class AdminUsersController(
     }
 
     [HttpPost("{id}/coins/remove")]
-    [Authorize(Policy = "Scope:Economy")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
     public async Task<ActionResult<CoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
