@@ -32,6 +32,7 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbServiceCatalogItemGroupRule> ServiceCatalogItemGroupRules { get; set; }
     public virtual DbSet<DbOidcAuthorizationCode> OidcAuthorizationCodes { get; set; }
     public virtual DbSet<DbOidcRefreshGrant> OidcRefreshGrants { get; set; }
+    public virtual DbSet<DbCompletedRewardTask> CompletedRewardTasks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         // Keep transaction audit records when a referenced balance is deleted: null the FK

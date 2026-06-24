@@ -41,11 +41,11 @@ public interface ITransactionRepository {
         BalanceOwnerType toType, string toId,
         ulong amount, string? description);
 
-    /// <summary>Returns transactions touching a specific balance (newest first).</summary>
-    Task<Transaction[]> GetTransactionsForBalance(string balanceId, int limit);
+    /// <summary>Returns transactions touching a specific balance (newest first), paginated.</summary>
+    Task<Transaction[]> GetTransactionsForBalance(string balanceId, int limit, int offset = 0);
 
-    /// <summary>Returns transactions touching any of an owner's balances (newest first).</summary>
-    Task<Transaction[]> GetTransactionsForOwner(BalanceOwnerType ownerType, string ownerId, int limit);
+    /// <summary>Returns transactions touching any of an owner's balances (newest first), paginated.</summary>
+    Task<Transaction[]> GetTransactionsForOwner(BalanceOwnerType ownerType, string ownerId, int limit, int offset = 0);
 
     /// <summary>
     /// Admin audit query. Each optional filter is matched against the resolved balances of an

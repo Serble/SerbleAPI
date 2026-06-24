@@ -256,7 +256,8 @@ public class AdminUsersController(
     public async Task<ActionResult<CoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
-        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.User, id, body.Balance);
+        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.User, id, body.Balance,
+            $"Admin set balance (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} set coins of user {TargetId} to {Balance}",
             HttpContext.User.GetUserId(), id, body.Balance);
         return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
@@ -267,7 +268,8 @@ public class AdminUsersController(
     public async Task<ActionResult<CoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
-        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.User, id, body.Amount);
+        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.User, id, body.Amount,
+            $"Admin mint (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} added {Amount} coins to user {TargetId} (new balance {Balance})",
             HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
         return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });
@@ -278,7 +280,8 @@ public class AdminUsersController(
     public async Task<ActionResult<CoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
-        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.User, id, body.Amount);
+        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.User, id, body.Amount,
+            $"Admin burn (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} removed {Amount} coins from user {TargetId} (new balance {Balance})",
             HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
         return Ok(new CoinBalanceResponse { UserId = id, Coins = bal.Coins });

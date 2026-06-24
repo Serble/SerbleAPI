@@ -89,12 +89,14 @@ public class BalanceController(
         return Ok(BalanceResponse.From(bal));
     }
 
-    /// <summary>Lists the caller's transaction history (newest first) for auditing.</summary>
+    /// <summary>Lists the caller's transaction history (newest first) for auditing, paginated via
+    /// <c>limit</c> (1..200, default 50) and <c>offset</c> (default 0).</summary>
     [HttpGet("transactions")]
-    public async Task<ActionResult<TransactionResponse[]>> GetTransactions([FromQuery] int limit = 50) {
+    public async Task<ActionResult<TransactionResponse[]>> GetTransactions([FromQuery] int limit = 50, [FromQuery] int offset = 0) {
         if (ResolveOwner() is not { } owner) return Unauthorized();
         limit = Math.Clamp(limit, 1, 200);
-        Transaction[] txs = await transactionRepo.GetTransactionsForOwner(owner.type, owner.id, limit);
+        offset = Math.Max(0, offset);
+        Transaction[] txs = await transactionRepo.GetTransactionsForOwner(owner.type, owner.id, limit, offset);
         return Ok(txs.Select(TransactionResponse.From).ToArray());
     }
 

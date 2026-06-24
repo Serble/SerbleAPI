@@ -50,6 +50,7 @@ public static class Program {
         builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
         builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
         builder.Services.AddOptions<OidcSettings>().Bind(builder.Configuration.GetSection("Oidc"));
+        builder.Services.AddOptions<EconomySettings>().Bind(builder.Configuration.GetSection("Economy"));
         
         builder.Services.AddControllers();
         builder.Services.AddHttpClient();
@@ -80,6 +81,7 @@ public static class Program {
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<ITurnstileCaptchaService, TurnstileCaptchaService>();
         builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
+        builder.Services.AddScoped<IRewardTaskService, RewardTaskService>();
 
         // OIDC provider services
         builder.Services.AddSingleton<IOidcKeyService, OidcKeyService>();
@@ -100,6 +102,7 @@ public static class Program {
         builder.Services.AddScoped<IKvRepository, KvRepository>();
         builder.Services.AddScoped<IGroupRepository, GroupRepository>();
         builder.Services.AddScoped<IServiceCatalogRepository, ServiceCatalogRepository>();
+        builder.Services.AddScoped<ICompletedRewardTaskRepository, CompletedRewardTaskRepository>();
         builder.Services.AddScoped<IAppAccessRepository, AppAccessRepository>();
         builder.Services.AddScoped<IOidcCodeRepository, OidcCodeRepository>();
         builder.Services.AddScoped<IOidcRefreshRepository, OidcRefreshRepository>();

@@ -50,7 +50,8 @@ public class OfficialAppBalanceController(
         if (body.Amount == 0) return BadRequest("Amount must be greater than zero.");
         User? user = await ResolveUser(id);
         if (user == null) return NotFound("User not found.");
-        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.User, user.Id, body.Amount);
+        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.User, user.Id, body.Amount,
+            $"Official app mint (by {HttpContext.User.GetAppId()})");
         logger.LogInformation("Official app {AppId} added {Amount} coins to user {TargetId} (new balance {Balance})",
             HttpContext.User.GetAppId(), body.Amount, user.Id, bal.Coins);
         return Ok(new CoinBalanceResponse { UserId = user.Id, Coins = bal.Coins });
@@ -62,7 +63,8 @@ public class OfficialAppBalanceController(
         if (body.Amount == 0) return BadRequest("Amount must be greater than zero.");
         User? user = await ResolveUser(id);
         if (user == null) return NotFound("User not found.");
-        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.User, user.Id, body.Amount);
+        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.User, user.Id, body.Amount,
+            $"Official app burn (by {HttpContext.User.GetAppId()})");
         logger.LogInformation("Official app {AppId} removed {Amount} coins from user {TargetId} (new balance {Balance})",
             HttpContext.User.GetAppId(), body.Amount, user.Id, bal.Coins);
         return Ok(new CoinBalanceResponse { UserId = user.Id, Coins = bal.Coins });

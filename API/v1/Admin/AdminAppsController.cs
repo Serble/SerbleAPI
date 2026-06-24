@@ -159,7 +159,8 @@ public class AdminAppsController(
     public async Task<ActionResult<AppCoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
-        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.App, id, body.Balance);
+        Balance bal = await balanceRepo.SetBalance(BalanceOwnerType.App, id, body.Balance,
+            $"Admin set balance (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} set coins of app {AppId} to {Balance}",
             HttpContext.User.GetUserId(), id, body.Balance);
         return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
@@ -170,7 +171,8 @@ public class AdminAppsController(
     public async Task<ActionResult<AppCoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
-        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.App, id, body.Amount);
+        Balance bal = await balanceRepo.AddCoins(BalanceOwnerType.App, id, body.Amount,
+            $"Admin mint (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} added {Amount} coins to app {AppId} (new balance {Balance})",
             HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
         return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
@@ -181,7 +183,8 @@ public class AdminAppsController(
     public async Task<ActionResult<AppCoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
-        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.App, id, body.Amount);
+        Balance bal = await balanceRepo.RemoveCoins(BalanceOwnerType.App, id, body.Amount,
+            $"Admin burn (by {HttpContext.User.GetUserId()})");
         logger.LogInformation("Admin {AdminId} removed {Amount} coins from app {AppId} (new balance {Balance})",
             HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
         return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });

@@ -15,15 +15,26 @@ public interface IBalanceRepository {
     /// <summary>Returns the balances matching the given ids (missing ids are omitted).</summary>
     Task<Balance[]> GetBalancesByIds(IEnumerable<string> ids);
     
-    /// <summary>Sets the owner's default balance to an absolute value, creating the row if needed.</summary>
-    Task<Balance> SetBalance(BalanceOwnerType ownerType, string ownerId, ulong coins);
+    /// <summary>Sets the owner's default balance to an absolute value, creating the row if needed.
+    /// Any net change is recorded as a mint/burn audit transaction.</summary>
+    Task<Balance> SetBalance(BalanceOwnerType ownerType, string ownerId, ulong coins, string? description = null);
     
-    /// <summary>Adds coins to the owner's default balance (saturates at ulong.MaxValue).</summary>
-    Task<Balance> AddCoins(BalanceOwnerType ownerType, string ownerId, ulong amount);
+    /// <summary>Adds coins to the owner's default balance (saturates at ulong.MaxValue). The minted
+    /// amount is recorded as an audit transaction.</summary>
+    Task<Balance> AddCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null);
     
-    /// <summary>Removes coins from the owner's default balance (clamped at 0).</summary>
-    Task<Balance> RemoveCoins(BalanceOwnerType ownerType, string ownerId, ulong amount);
+    /// <summary>Removes coins from the owner's default balance (clamped at 0). The burned amount is
+    /// recorded as an audit transaction.</summary>
+    Task<Balance> RemoveCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null);
     
     /// <summary>Deletes every balance owned by the given entity.</summary>
     Task DeleteBalancesForOwner(BalanceOwnerType ownerType, string ownerId);
+
+    /// <summary>
+    /// Sums the coins across every balance in the database, returning the grand total plus a
+    /// breakdown by owner type and the number of balances summed. Totals use
+    /// <see cref="System.Numerics.BigInteger"/> so the sum of many <c>ulong</c> balances cannot
+    /// overflow.
+    /// </summary>
+    Task<EconomyTotal> GetTotalEconomyValue();
 }

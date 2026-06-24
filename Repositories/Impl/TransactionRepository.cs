@@ -55,16 +55,17 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         return TransferOutcome.Ok(Map(tx), MapBalance(from), MapBalance(to));
     }
 
-    public async Task<Transaction[]> GetTransactionsForBalance(string balanceId, int limit) {
+    public async Task<Transaction[]> GetTransactionsForBalance(string balanceId, int limit, int offset = 0) {
         List<DbTransaction> rows = await db.Transactions.AsNoTracking()
             .Where(t => t.FromBalanceId == balanceId || t.ToBalanceId == balanceId)
             .OrderByDescending(t => t.DateCreated)
+            .Skip(offset)
             .Take(limit)
             .ToListAsync();
         return rows.Select(Map).ToArray();
     }
 
-    public async Task<Transaction[]> GetTransactionsForOwner(BalanceOwnerType ownerType, string ownerId, int limit) {
+    public async Task<Transaction[]> GetTransactionsForOwner(BalanceOwnerType ownerType, string ownerId, int limit, int offset = 0) {
         int type = (int)ownerType;
         List<string> balanceIds = await db.Balances.AsNoTracking()
             .Where(b => b.OwnerType == type && b.OwnerId == ownerId)
@@ -76,6 +77,7 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
             .Where(t => (t.FromBalanceId != null && balanceIds.Contains(t.FromBalanceId))
                      || (t.ToBalanceId != null && balanceIds.Contains(t.ToBalanceId)))
             .OrderByDescending(t => t.DateCreated)
+            .Skip(offset)
             .Take(limit)
             .ToListAsync();
         return rows.Select(Map).ToArray();
