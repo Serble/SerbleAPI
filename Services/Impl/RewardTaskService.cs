@@ -1,6 +1,4 @@
-using Microsoft.Extensions.Options;
 using SerbleAPI.Config;
-using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -8,7 +6,7 @@ namespace SerbleAPI.Services.Impl;
 
 public class RewardTaskService(
     ILogger<RewardTaskService> logger,
-    IOptions<EconomySettings> economy,
+    IServerConfigService config,
     ICompletedRewardTaskRepository completedTasks,
     IBalanceRepository balances) : IRewardTaskService {
 
@@ -23,17 +21,17 @@ public class RewardTaskService(
             return false;
         }
 
-        ulong wholeCoins = economy.Value.TaskRewards.GetValueOrDefault(taskKey, 0UL);
-        if (wholeCoins == 0) {
+        // The reward is a per-task coin setting (decimals allowed), stored as a coin amount and
+        // read here as raw fixed-point units.
+        ulong amount = await config.GetCoinsRaw(ServerConfigCatalog.TaskRewardKey(taskKey));
+        if (amount == 0) {
             // Task tracked as complete, but no reward is configured for it.
             return true;
         }
 
-        // TaskRewards is authored in whole coins; balances store raw fixed-point units.
-        ulong amount = CoinFixedPoint.FromWholeCoins(wholeCoins);
         await balances.AddCoins(BalanceOwnerType.User, userId, amount, $"Reward: {taskKey}");
-        logger.LogInformation("Granted {Coins} coins ({Raw} raw) to user {UserId} for reward task {TaskKey}",
-            wholeCoins, amount, userId, taskKey);
+        logger.LogInformation("Granted {Raw} raw coins to user {UserId} for reward task {TaskKey}",
+            amount, userId, taskKey);
         return true;
     }
 }

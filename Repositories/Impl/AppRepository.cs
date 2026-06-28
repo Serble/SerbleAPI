@@ -38,6 +38,16 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         return row == null ? null : Map(row);
     }
 
+    public async Task<OAuthApp[]> GetOAuthApps(IEnumerable<string> appIds) {
+        string[] ids = appIds.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        DbApp[] rows = await db.Apps
+            .AsNoTracking()
+            .Where(a => ids.Contains(a.Id))
+            .ToArrayAsync();
+        return rows.Select(Map).ToArray();
+    }
+
     public async Task<OAuthApp[]> GetOAuthAppsFromUser(string userId) {
         DbApp[] vals = await db.Apps
             .Where(a => a.OwnerId == userId)

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SerbleAPI.Models;
 
@@ -11,9 +12,11 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Migrations
 {
     [DbContext(typeof(SerbleDbContext))]
-    partial class SerbleDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626124958_AddItemTransactions")]
+    partial class AddItemTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -922,89 +925,6 @@ namespace SerbleAPI.Migrations
                     b.ToTable("UserPasskeys");
                 });
 
-            modelBuilder.Entity("SerbleAPI.Models.DbUserTrade", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("FromUserId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<ulong>("OfferedCoins")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<ulong>("RequestedCoins")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ToUserId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("TransactionId")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FromUserId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("ToUserId");
-
-                    b.ToTable("UserTrades");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbUserTradeItem", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<int>("Direction")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ItemId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("TradeId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TradeId");
-
-                    b.ToTable("UserTradeItems");
-                });
-
             modelBuilder.Entity("SerbleAPI.Models.DbApp", b =>
                 {
                     b.HasOne("SerbleAPI.Models.DbUser", "OwnerNavigation")
@@ -1192,17 +1112,6 @@ namespace SerbleAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("OwnerNavigation");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbUserTradeItem", b =>
-                {
-                    b.HasOne("SerbleAPI.Models.DbUserTrade", "TradeNavigation")
-                        .WithMany()
-                        .HasForeignKey("TradeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("TradeNavigation");
                 });
 #pragma warning restore 612, 618
         }

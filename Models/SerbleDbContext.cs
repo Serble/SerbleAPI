@@ -21,6 +21,7 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbBalance> Balances { get; set; }
     public virtual DbSet<DbTransaction> Transactions { get; set; }
     public virtual DbSet<DbTransactionProposal> TransactionProposals { get; set; }
+    public virtual DbSet<DbTransactionProposalItem> TransactionProposalItems { get; set; }
     public virtual DbSet<DbAppApiKey> AppApiKeys { get; set; }
     public virtual DbSet<DbUserNote> UserNotes { get; set; }
     public virtual DbSet<DbUserPasskey> UserPasskeys { get; set; }
@@ -33,6 +34,10 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbOidcAuthorizationCode> OidcAuthorizationCodes { get; set; }
     public virtual DbSet<DbOidcRefreshGrant> OidcRefreshGrants { get; set; }
     public virtual DbSet<DbCompletedRewardTask> CompletedRewardTasks { get; set; }
+    public virtual DbSet<DbItem> Items { get; set; }
+    public virtual DbSet<DbItemTransaction> ItemTransactions { get; set; }
+    public virtual DbSet<DbUserTrade> UserTrades { get; set; }
+    public virtual DbSet<DbUserTradeItem> UserTradeItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         // Keep transaction audit records when a referenced balance is deleted: null the FK
@@ -49,5 +54,28 @@ public class SerbleDbContext : DbContext {
             .WithMany()
             .HasForeignKey(t => t.ToBalanceId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Trade proposal item legs are owned by their proposal: removing the proposal removes its
+        // item rows.
+        modelBuilder.Entity<DbTransactionProposalItem>()
+            .HasOne(i => i.ProposalNavigation)
+            .WithMany()
+            .HasForeignKey(i => i.ProposalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // An item's ownership history is owned by the item: removing the item removes its audit
+        // trail. Owner ids are plain strings (no FK), so history survives owner deletion.
+        modelBuilder.Entity<DbItemTransaction>()
+            .HasOne(i => i.ItemNavigation)
+            .WithMany()
+            .HasForeignKey(i => i.ItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // User-trade item legs are owned by their trade: removing the trade removes its item rows.
+        modelBuilder.Entity<DbUserTradeItem>()
+            .HasOne(i => i.TradeNavigation)
+            .WithMany()
+            .HasForeignKey(i => i.TradeId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

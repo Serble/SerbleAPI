@@ -41,7 +41,8 @@ public static class Program {
         StripeConfiguration.ApiKey = stripeSettings.ApiKey;
         
         RawDataManager.LoadRawData();
-        
+        WordId.Load();
+
         builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
         builder.Services.AddOptions<StripeSettings>().Bind(builder.Configuration.GetSection("Stripe"));
         builder.Services.AddOptions<PasskeySettings>().Bind(builder.Configuration.GetSection("Passkey"));
@@ -50,7 +51,6 @@ public static class Program {
         builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
         builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
         builder.Services.AddOptions<OidcSettings>().Bind(builder.Configuration.GetSection("Oidc"));
-        builder.Services.AddOptions<EconomySettings>().Bind(builder.Configuration.GetSection("Economy"));
         
         builder.Services.AddControllers();
         builder.Services.AddHttpClient();
@@ -82,6 +82,7 @@ public static class Program {
         builder.Services.AddScoped<ITurnstileCaptchaService, TurnstileCaptchaService>();
         builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
         builder.Services.AddScoped<IRewardTaskService, RewardTaskService>();
+        builder.Services.AddScoped<IServerConfigService, ServerConfigService>();
 
         // OIDC provider services
         builder.Services.AddSingleton<IOidcKeyService, OidcKeyService>();
@@ -94,6 +95,7 @@ public static class Program {
         builder.Services.AddScoped<IBalanceRepository, BalanceRepository>();
         builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
         builder.Services.AddScoped<ITransactionProposalRepository, TransactionProposalRepository>();
+        builder.Services.AddScoped<IUserTradeRepository, UserTradeRepository>();
         builder.Services.AddScoped<IAppApiKeyRepository, AppApiKeyRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
         builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
@@ -103,6 +105,8 @@ public static class Program {
         builder.Services.AddScoped<IGroupRepository, GroupRepository>();
         builder.Services.AddScoped<IServiceCatalogRepository, ServiceCatalogRepository>();
         builder.Services.AddScoped<ICompletedRewardTaskRepository, CompletedRewardTaskRepository>();
+        builder.Services.AddScoped<IItemRepository, ItemRepository>();
+        builder.Services.AddScoped<IItemTransactionRepository, ItemTransactionRepository>();
         builder.Services.AddScoped<IAppAccessRepository, AppAccessRepository>();
         builder.Services.AddScoped<IOidcCodeRepository, OidcCodeRepository>();
         builder.Services.AddScoped<IOidcRefreshRepository, OidcRefreshRepository>();

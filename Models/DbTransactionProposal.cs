@@ -30,6 +30,9 @@ public class DbTransactionProposal {
 
     public ulong Amount { get; set; }
 
+    /// <summary>Coins the proposing app offers the user (app → user). 0 when nothing is offered.</summary>
+    public ulong OfferedCoins { get; set; }
+
     [StringLength(256)]
     public string? Description { get; set; }
 

@@ -8,6 +8,8 @@ public class SanitisedOAuthApp {
     public string Description { get; set; }
     public string RedirectUri { get; set; }
     public bool IsOfficial { get; set; }
+    /// <summary>Human-readable four-word fingerprint of <see cref="Id"/> (see <see cref="SerbleAPI.Data.WordId"/>).</summary>
+    public string ReadableId { get; set; }
 
     public SanitisedOAuthApp(OAuthApp app) {
         OwnerId = app.OwnerId;
@@ -16,6 +18,7 @@ public class SanitisedOAuthApp {
         Description = app.Description;
         RedirectUri = app.RedirectUri;
         IsOfficial = app.IsOfficial;
+        ReadableId = WordId.Encode(app.Id);
     }
 
 }

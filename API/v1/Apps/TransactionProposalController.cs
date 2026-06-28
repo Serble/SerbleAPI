@@ -28,6 +28,7 @@ public class TransactionProposalController(
     ITransactionProposalRepository proposalRepo,
     IUserRepository userRepo,
     IAppRepository appRepo,
+    IItemRepository itemRepo,
     IOptions<ApiSettings> apiSettings) : ControllerManager {
 
     /// <summary>How long a proposal stays open for the user to act before it expires.</summary>
@@ -36,11 +37,18 @@ public class TransactionProposalController(
     public class CreateProposalBody {
         /// <summary>The payer: a user's id or username. Required.</summary>
         public string User { get; set; } = "";
-        /// <summary>Recipient owner kind: "User" or "App". Defaults to "App" (the proposing app).</summary>
+        /// <summary>Recipient owner kind for the requested coins: "User" or "App". Defaults to "App" (the proposing app).</summary>
         public string? RecipientType { get; set; }
-        /// <summary>Recipient identifier (user id/username, or app id). Defaults to the proposing app.</summary>
+        /// <summary>Recipient identifier for the requested coins (user id/username, or app id). Defaults to the proposing app.</summary>
         public string? Recipient { get; set; }
+        /// <summary>Coins the user pays the recipient (user → recipient). Optional; defaults to 0.</summary>
         public ulong Amount { get; set; }
+        /// <summary>Coins the proposing app gives the user (app → user). Optional; defaults to 0.</summary>
+        public ulong OfferedCoins { get; set; }
+        /// <summary>Ids of items the app gives the user (app → user). The app must own them.</summary>
+        public List<string>? OfferedItemIds { get; set; }
+        /// <summary>Ids of items the app requests from the user (user → app).</summary>
+        public List<string>? RequestedItemIds { get; set; }
         public string? Description { get; set; }
         /// <summary>Optional URL to return the user to after they decide. Any URL is accepted;
         /// only the opaque proposal id and outcome status are appended to it.</summary>
@@ -55,6 +63,10 @@ public class TransactionProposalController(
         public string RecipientType { get; set; } = "";
         public string RecipientId { get; set; } = "";
         public ulong Amount { get; set; }
+        public ulong OfferedCoins { get; set; }
+        public string[] OfferedItemIds { get; set; } = [];
+        public string[] RequestedItemIds { get; set; } = [];
+        public bool IsGift { get; set; }
         public string? Description { get; set; }
         public string? RedirectUri { get; set; }
         public string? TransactionId { get; set; }
@@ -64,20 +76,25 @@ public class TransactionProposalController(
         public DateTime? ResolvedAt { get; set; }
 
         public static ProposalResponse From(TransactionProposal p) => new() {
-            ProposalId    = p.Id,
-            Status        = p.Status.ToString(),
-            AppId         = p.AppId,
-            UserId        = p.UserId,
-            RecipientType = p.RecipientType.ToString(),
-            RecipientId   = p.RecipientId,
-            Amount        = p.Amount,
-            Description   = p.Description,
-            RedirectUri   = p.RedirectUri,
-            TransactionId = p.TransactionId,
-            FailureReason = p.FailureReason,
-            CreatedAt     = p.CreatedAt,
-            ExpiresAt     = p.ExpiresAt,
-            ResolvedAt    = p.ResolvedAt
+            ProposalId       = p.Id,
+            Status           = p.Status.ToString(),
+            AppId            = p.AppId,
+            UserId           = p.UserId,
+            RecipientType    = p.RecipientType.ToString(),
+            RecipientId      = p.RecipientId,
+            Amount           = p.Amount,
+            OfferedCoins     = p.OfferedCoins,
+            OfferedItemIds   = p.OfferedItemIds.ToArray(),
+            RequestedItemIds = p.RequestedItemIds.ToArray(),
+            IsGift           = p.Amount == 0 && p.RequestedItemIds.Count == 0
+                               && (p.OfferedCoins > 0 || p.OfferedItemIds.Count > 0),
+            Description      = p.Description,
+            RedirectUri      = p.RedirectUri,
+            TransactionId    = p.TransactionId,
+            FailureReason    = p.FailureReason,
+            CreatedAt        = p.CreatedAt,
+            ExpiresAt        = p.ExpiresAt,
+            ResolvedAt       = p.ResolvedAt
         };
     }
 
@@ -91,13 +108,41 @@ public class TransactionProposalController(
         string? appId = HttpContext.User.GetAppId();
         if (appId == null) return Unauthorized();
 
-        if (body.Amount == 0) return BadRequest("Amount must be greater than zero.");
         if (string.IsNullOrWhiteSpace(body.User)) return BadRequest("User (payer) is required.");
 
         User? payer = await userRepo.GetUser(body.User) ?? await userRepo.GetUserFromName(body.User);
         if (payer == null) return NotFound("Payer user not found.");
 
-        // Recipient defaults to the proposing app.
+        List<string> offeredItemIds = (body.OfferedItemIds ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct().ToList();
+        List<string> requestedItemIds = (body.RequestedItemIds ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct().ToList();
+
+        // The trade must move at least one asset.
+        if (body.Amount == 0 && body.OfferedCoins == 0
+            && offeredItemIds.Count == 0 && requestedItemIds.Count == 0)
+            return BadRequest("A proposal must move at least one asset (coins or items).");
+
+        // Consent is only required when the trade takes something from the user OR gives the user
+        // an item. A pure coin gift to the user needs no consent — use POST /api/v1/balance/transfer.
+        bool requiresConsent = body.Amount > 0 || requestedItemIds.Count > 0 || offeredItemIds.Count > 0;
+        if (!requiresConsent)
+            return BadRequest("Sending a user coins for nothing in return needs no consent; use the balance transfer endpoint instead.");
+
+        // The app can only give away items it currently owns.
+        foreach (string itemId in offeredItemIds) {
+            Item? item = await itemRepo.GetItem(itemId);
+            if (item == null) return NotFound($"Offered item '{itemId}' not found.");
+            if (item.OwnerType != BalanceOwnerType.App || item.OwnerId != appId)
+                return BadRequest($"App does not own offered item '{itemId}'.");
+        }
+        // Requested items must exist (ownership by the user is re-checked at approval time).
+        foreach (string itemId in requestedItemIds) {
+            Item? item = await itemRepo.GetItem(itemId);
+            if (item == null) return NotFound($"Requested item '{itemId}' not found.");
+        }
+
+        // Recipient (of the requested coins) defaults to the proposing app.
         string recipientTypeRaw = string.IsNullOrWhiteSpace(body.RecipientType) ? "App" : body.RecipientType.Trim();
         if (!Enum.TryParse(recipientTypeRaw, true, out BalanceOwnerType recipientType))
             return BadRequest("RecipientType must be 'User' or 'App'.");
@@ -123,7 +168,7 @@ public class TransactionProposalController(
                 return BadRequest("RecipientType must be 'User' or 'App'.");
         }
 
-        if (recipientType == BalanceOwnerType.User && recipientId == payer.Id)
+        if (body.Amount > 0 && recipientType == BalanceOwnerType.User && recipientId == payer.Id)
             return BadRequest("Payer and recipient cannot be the same user.");
 
         // Optional post-decision redirect. Set by the app via its own API key; nothing sensitive
@@ -133,17 +178,20 @@ public class TransactionProposalController(
 
         DateTime now = DateTime.UtcNow;
         TransactionProposal proposal = new() {
-            Id            = OidcCrypto.NewHandle(),
-            AppId         = appId,
-            UserId        = payer.Id,
-            RecipientType = recipientType,
-            RecipientId   = recipientId,
-            Amount        = body.Amount,
-            Description   = body.Description,
-            RedirectUri   = redirectUri,
-            Status        = TransactionProposalStatus.Pending,
-            CreatedAt     = now,
-            ExpiresAt     = now + ProposalLifetime
+            Id               = OidcCrypto.NewHandle(),
+            AppId            = appId,
+            UserId           = payer.Id,
+            RecipientType    = recipientType,
+            RecipientId      = recipientId,
+            Amount           = body.Amount,
+            OfferedCoins     = body.OfferedCoins,
+            OfferedItemIds   = offeredItemIds,
+            RequestedItemIds = requestedItemIds,
+            Description      = body.Description,
+            RedirectUri      = redirectUri,
+            Status           = TransactionProposalStatus.Pending,
+            CreatedAt        = now,
+            ExpiresAt        = now + ProposalLifetime
         };
         await proposalRepo.Create(proposal);
 
@@ -151,8 +199,8 @@ public class TransactionProposalController(
             apiSettings.Value.WebsiteUrl.TrimEnd('/') + "/transactions/consent",
             "proposal", proposal.Id);
 
-        logger.LogInformation("App {AppId} proposed transaction {ProposalId}: user {UserId} -> {RecipientType}:{RecipientId} ({Amount})",
-            appId, proposal.Id, payer.Id, recipientType, recipientId, body.Amount);
+        logger.LogInformation("App {AppId} proposed trade {ProposalId}: payer {UserId} (request {Amount} coins + {ReqItems} items; offer {OfferedCoins} coins + {OffItems} items)",
+            appId, proposal.Id, payer.Id, body.Amount, requestedItemIds.Count, body.OfferedCoins, offeredItemIds.Count);
 
         return Ok(new CreateProposalResponse {
             Proposal   = ProposalResponse.From(proposal),

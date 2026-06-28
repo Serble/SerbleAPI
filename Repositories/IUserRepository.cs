@@ -4,6 +4,8 @@ namespace SerbleAPI.Repositories;
 
 public interface IUserRepository {
     Task<User?> GetUser(string userId);
+    /// <summary>Returns the users matching any of the given ids (unknown ids omitted).</summary>
+    Task<User[]> GetUsers(string[] userIds);
     Task<User?> GetUserFromName(string userName);
     Task<User?> GetUserFromStripeCustomerId(string customerId);
     Task<User> AddUser(User user);

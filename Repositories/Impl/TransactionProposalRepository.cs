@@ -6,24 +6,44 @@ namespace SerbleAPI.Repositories.Impl;
 
 public class TransactionProposalRepository(SerbleDbContext db) : ITransactionProposalRepository {
 
-    private static TransactionProposal Map(DbTransactionProposal r) => new() {
-        Id            = r.Id,
-        AppId         = r.AppId,
-        UserId        = r.UserId,
-        RecipientType = (BalanceOwnerType)r.RecipientType,
-        RecipientId   = r.RecipientId,
-        Amount        = r.Amount,
-        Description   = r.Description,
-        RedirectUri   = r.RedirectUri,
-        Status        = (TransactionProposalStatus)r.Status,
-        TransactionId = r.TransactionId,
-        FailureReason = r.FailureReason,
-        CreatedAt     = r.CreatedAt,
-        ExpiresAt     = r.ExpiresAt,
-        ResolvedAt    = r.ResolvedAt
-    };
+    private static TransactionProposal Map(DbTransactionProposal r, IEnumerable<DbTransactionProposalItem> items) {
+        List<DbTransactionProposalItem> list = items.ToList();
+        return new TransactionProposal {
+            Id               = r.Id,
+            AppId            = r.AppId,
+            UserId           = r.UserId,
+            RecipientType    = (BalanceOwnerType)r.RecipientType,
+            RecipientId      = r.RecipientId,
+            Amount           = r.Amount,
+            OfferedCoins     = r.OfferedCoins,
+            OfferedItemIds   = list.Where(i => i.Direction == (int)ProposalItemDirection.Offer)
+                                   .Select(i => i.ItemId).ToList(),
+            RequestedItemIds = list.Where(i => i.Direction == (int)ProposalItemDirection.Request)
+                                   .Select(i => i.ItemId).ToList(),
+            Description      = r.Description,
+            RedirectUri      = r.RedirectUri,
+            Status           = (TransactionProposalStatus)r.Status,
+            TransactionId    = r.TransactionId,
+            FailureReason    = r.FailureReason,
+            CreatedAt        = r.CreatedAt,
+            ExpiresAt        = r.ExpiresAt,
+            ResolvedAt       = r.ResolvedAt
+        };
+    }
 
-    public Task Create(TransactionProposal proposal) {
+    private async Task<TransactionProposal?> LoadById(string id) {
+        DbTransactionProposal? row = await db.TransactionProposals
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+        if (row == null) return null;
+        List<DbTransactionProposalItem> items = await db.TransactionProposalItems
+            .AsNoTracking()
+            .Where(i => i.ProposalId == id)
+            .ToListAsync();
+        return Map(row, items);
+    }
+
+    public async Task Create(TransactionProposal proposal) {
         db.TransactionProposals.Add(new DbTransactionProposal {
             Id            = proposal.Id,
             AppId         = proposal.AppId,
@@ -31,13 +51,30 @@ public class TransactionProposalRepository(SerbleDbContext db) : ITransactionPro
             RecipientType = (int)proposal.RecipientType,
             RecipientId   = proposal.RecipientId,
             Amount        = proposal.Amount,
+            OfferedCoins  = proposal.OfferedCoins,
             Description   = proposal.Description,
             RedirectUri   = proposal.RedirectUri,
             Status        = (int)TransactionProposalStatus.Pending,
             CreatedAt     = proposal.CreatedAt,
             ExpiresAt     = proposal.ExpiresAt
         });
-        return db.SaveChangesAsync();
+        foreach (string itemId in proposal.OfferedItemIds) {
+            db.TransactionProposalItems.Add(new DbTransactionProposalItem {
+                Id         = Guid.NewGuid().ToString(),
+                ProposalId = proposal.Id,
+                ItemId     = itemId,
+                Direction  = (int)ProposalItemDirection.Offer
+            });
+        }
+        foreach (string itemId in proposal.RequestedItemIds) {
+            db.TransactionProposalItems.Add(new DbTransactionProposalItem {
+                Id         = Guid.NewGuid().ToString(),
+                ProposalId = proposal.Id,
+                ItemId     = itemId,
+                Direction  = (int)ProposalItemDirection.Request
+            });
+        }
+        await db.SaveChangesAsync();
     }
 
     public async Task<TransactionProposal?> GetById(string id) {
@@ -51,10 +88,7 @@ public class TransactionProposalRepository(SerbleDbContext db) : ITransactionPro
                 .SetProperty(p => p.Status, (int)TransactionProposalStatus.Expired)
                 .SetProperty(p => p.ResolvedAt, now));
 
-        DbTransactionProposal? row = await db.TransactionProposals
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id);
-        return row == null ? null : Map(row);
+        return await LoadById(id);
     }
 
     public async Task<TransactionProposal?> TryBeginConsent(string id, string userId) {
@@ -68,13 +102,10 @@ public class TransactionProposalRepository(SerbleDbContext db) : ITransactionPro
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, (int)TransactionProposalStatus.InProgress));
         if (affected == 0) return null;
 
-        DbTransactionProposal? row = await db.TransactionProposals
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id);
-        return row == null ? null : Map(row);
+        return await LoadById(id);
     }
 
-    public Task MarkApproved(string id, string transactionId) {
+    public Task MarkApproved(string id, string? transactionId) {
         DateTime now = DateTime.UtcNow;
         return db.TransactionProposals
             .Where(p => p.Id == id && p.Status == (int)TransactionProposalStatus.InProgress)

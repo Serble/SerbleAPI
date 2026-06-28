@@ -20,8 +20,9 @@ public interface ITransactionProposalRepository {
     /// </summary>
     Task<TransactionProposal?> TryBeginConsent(string id, string userId);
 
-    /// <summary>Marks an in-progress proposal <c>Approved</c> and records the resulting transaction id.</summary>
-    Task MarkApproved(string id, string transactionId);
+    /// <summary>Marks an in-progress proposal <c>Approved</c> and records the resulting transaction
+    /// id (null for an items-only trade with no coin movement).</summary>
+    Task MarkApproved(string id, string? transactionId);
 
     /// <summary>Marks an in-progress proposal <c>Failed</c> with a reason (transfer could not complete).</summary>
     Task MarkFailed(string id, string reason);

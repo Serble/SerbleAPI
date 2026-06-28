@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using SerbleAPI.Authentication;
+using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -15,7 +16,8 @@ public class AppController(
     IAppRepository appRepo,
     IUserRepository userRepo,
     IAppApiKeyRepository keyRepo,
-    IBalanceRepository balanceRepo) : ControllerManager {
+    IBalanceRepository balanceRepo,
+    IItemRepository itemRepo) : ControllerManager {
 
     // Public endpoint — no auth required
     [HttpGet("{appid}/public")]
@@ -24,6 +26,28 @@ public class AppController(
         OAuthApp? app = await appRepo.GetOAuthApp(appid);
         if (app == null) return NotFound();
         return Ok(JsonConvert.SerializeObject(new SanitisedOAuthApp(app)));
+    }
+
+    public class BatchPublicAppsBody {
+        public string[] Ids { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Resolves many app ids to their public info in a single request — used by clients (e.g. the
+    /// inventory view) that need the creating-app details for a list of items without an N+1 of
+    /// <see cref="GetPublicInfo"/> calls. Unknown ids are simply omitted from the result.
+    /// </summary>
+    [HttpPost("public/batch")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPublicInfoBatch([FromBody] BatchPublicAppsBody body) {
+        string[] ids = (body.Ids ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .Take(200)
+            .ToArray();
+        if (ids.Length == 0) return Ok(JsonConvert.SerializeObject(Array.Empty<SanitisedOAuthApp>()));
+        OAuthApp[] apps = await appRepo.GetOAuthApps(ids);
+        return Ok(JsonConvert.SerializeObject(apps.Select(a => new SanitisedOAuthApp(a)).ToArray()));
     }
 
     [HttpGet("{appid}")]
@@ -171,6 +195,52 @@ public class AppController(
         if (error != null) return error;
         Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, app!.Id);
         return Ok(BalanceResponse(app.Id, bal));
+    }
+
+    // -------- App items (owner-managed, read-only) --------
+
+    public class AppItemResponse {
+        public string Id { get; set; } = "";
+        public string ReadableId { get; set; } = "";
+        public string OwnerType { get; set; } = "";
+        public string OwnerId { get; set; } = "";
+        public string CreatorAppId { get; set; } = "";
+        public DateTime DateCreated { get; set; }
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string? IconUrl { get; set; }
+
+        public static AppItemResponse From(Item i) => new() {
+            Id           = i.Id,
+            ReadableId   = WordId.Encode(i.Id),
+            OwnerType    = i.OwnerType.ToString(),
+            OwnerId      = i.OwnerId,
+            CreatorAppId = i.CreatorAppId,
+            DateCreated  = i.DateCreated,
+            Name         = i.Name,
+            Description  = i.Description,
+            IconUrl      = i.IconUrl
+        };
+    }
+
+    /// <summary>
+    /// Lists items owned by an app the authenticated user owns (newest first), paginated. This is
+    /// the owner-facing view of an app's items.
+    /// </summary>
+    [HttpGet("{appid}/items")]
+    [Authorize(Policy = "Scope:ManageApps")]
+    public async Task<ActionResult<AppItemResponse[]>> GetAppItems(
+        string appid,
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0) {
+        (OAuthApp? app, ActionResult? error) = await GetOwnedApp(appid);
+        if (error != null) return error;
+
+        limit = Math.Clamp(limit, 1, 200);
+        offset = Math.Max(0, offset);
+
+        Item[] items = await itemRepo.GetItemsForOwner(BalanceOwnerType.App, app!.Id, limit, offset);
+        return Ok(items.Select(AppItemResponse.From).ToArray());
     }
 
     // -------- App self (API key auth) --------

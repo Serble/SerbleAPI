@@ -37,6 +37,13 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         return MapWithRepos(row);
     }
 
+    public async Task<User[]> GetUsers(string[] userIds) {
+        string[] ids = (userIds ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        DbUser[] rows = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToArrayAsync();
+        return rows.Select(r => MapWithRepos(r)!).ToArray();
+    }
+
     public async Task<User?> GetUserFromName(string userName) {
         DbUser? row = await db.Users.FirstOrDefaultAsync(u => u.Username == userName);
         return MapWithRepos(row);

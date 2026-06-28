@@ -33,6 +33,9 @@
         <None Update="Data\Raw\words.txt">
           <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <EmbeddedResource Include="Data\Raw\encode-words.txt">
+          <LogicalName>SerbleAPI.Data.Raw.encode-words.txt</LogicalName>
+        </EmbeddedResource>
     </ItemGroup>
 
 </Project>

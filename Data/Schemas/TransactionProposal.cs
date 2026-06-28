@@ -13,7 +13,14 @@ public class TransactionProposal {
     /// <summary>Where the money goes.</summary>
     public BalanceOwnerType RecipientType { get; set; }
     public string RecipientId { get; set; } = "";
+    /// <summary>Coins the user pays the recipient (user → recipient). 0 when nothing is requested.</summary>
     public ulong Amount { get; set; }
+    /// <summary>Coins the proposing app offers the user (app → user). 0 when nothing is offered.</summary>
+    public ulong OfferedCoins { get; set; }
+    /// <summary>Ids of items the proposing app offers the user (app → user).</summary>
+    public List<string> OfferedItemIds { get; set; } = new();
+    /// <summary>Ids of items the proposing app requests from the user (user → app).</summary>
+    public List<string> RequestedItemIds { get; set; } = new();
     public string? Description { get; set; }
     /// <summary>Optional URL to send the user back to after they decide (registered on the app).</summary>
     public string? RedirectUri { get; set; }
