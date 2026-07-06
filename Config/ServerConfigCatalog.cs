@@ -11,6 +11,8 @@ public enum ServerConfigValueType {
     String,
     /// <summary>A coin amount entered as a decimal (e.g. <c>0.5</c>); stored as a trimmed decimal string.</summary>
     Coins,
+    /// <summary>A percentage entered as a decimal number from 0 to 100 (e.g. <c>12.5</c> for 12.5%).</summary>
+    Percent,
     /// <summary>A list of strings, one per line; stored newline-separated, blanks/dupes removed.</summary>
     StringList
 }
@@ -67,6 +69,17 @@ public class ServerConfigDefinition {
                     .Parse(normalised, NumberStyles.Number, CultureInfo.InvariantCulture)
                     .ToString("0.########", CultureInfo.InvariantCulture);
                 return true;
+            case ServerConfigValueType.Percent:
+                if (!decimal.TryParse(normalised, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal pct)) {
+                    error = $"{Label} must be a number.";
+                    return false;
+                }
+                if (pct < 0 || pct > 100) {
+                    error = $"{Label} must be between 0 and 100.";
+                    return false;
+                }
+                normalised = pct.ToString("0.########", CultureInfo.InvariantCulture);
+                return true;
             case ServerConfigValueType.StringList:
                 List<string> lines = normalised
                     .Replace("\r\n", "\n").Replace('\r', '\n')
@@ -105,6 +118,21 @@ public static class ServerConfigCatalog {
     /// <summary>Coins an app is charged each time it mints an item (0 disables the fee).</summary>
     public const string ItemCreationFee = "economy.item_creation_fee";
 
+    /// <summary>How often to run the tax cycle, in hours (0 disables tax collection).</summary>
+    public const string TaxPeriodHours = "economy.tax.period_hours";
+
+    /// <summary>The fixed percentage of each user's balance charged each cycle when dynamic mode is off.</summary>
+    public const string TaxFixedRate = "economy.tax.fixed_rate";
+
+    /// <summary>Whether the tax rate is computed from official-app target deficits instead of using the fixed rate.</summary>
+    public const string TaxUseDynamicRate = "economy.tax.use_dynamic_rate";
+
+    /// <summary>The highest percentage of each user's balance dynamic mode is allowed to charge in one cycle.</summary>
+    public const string TaxMaxDynamicRate = "economy.tax.max_dynamic_rate";
+
+    /// <summary>The app id whose balance receives tax collections before redistribution.</summary>
+    public const string TaxBossAppId = "economy.tax.boss_app_id";
+
     /// <summary>Allowed prefixes for an item's icon URL (a <see cref="ServerConfigValueType.StringList"/>).</summary>
     public const string AllowedIconUrlPrefixes = "items.allowed_icon_url_prefixes";
 
@@ -124,6 +152,46 @@ public static class ServerConfigCatalog {
                 Type        = ServerConfigValueType.Coins,
                 Default     = "0",
                 Public      = true
+            },
+            new() {
+                Key         = TaxPeriodHours,
+                Label       = "Tax period (hours)",
+                Description = "How often the server runs the tax cycle. Set to 0 to disable periodic tax collection.",
+                Type        = ServerConfigValueType.Integer,
+                Default     = "0",
+                Public      = false
+            },
+            new() {
+                Key         = TaxFixedRate,
+                Label       = "Fixed tax rate (%)",
+                Description = "Percentage of each user's current balance charged each cycle when dynamic tax mode is off. Decimals are allowed, for example 12.5 means 12.5%.",
+                Type        = ServerConfigValueType.Percent,
+                Default     = "0",
+                Public      = false
+            },
+            new() {
+                Key         = TaxUseDynamicRate,
+                Label       = "Use dynamic tax rate",
+                Description = "When true, the server computes the percentage of each user's current balance needed to try to meet official-app target balances. When false, the fixed tax rate is used.",
+                Type        = ServerConfigValueType.Boolean,
+                Default     = "false",
+                Public      = false
+            },
+            new() {
+                Key         = TaxMaxDynamicRate,
+                Label       = "Max dynamic tax rate (%)",
+                Description = "Upper limit for the percentage of each user's current balance that dynamic mode may charge in one cycle. Decimals are allowed. Set to 0 to prevent dynamic tax from charging anything.",
+                Type        = ServerConfigValueType.Percent,
+                Default     = "0",
+                Public      = false
+            },
+            new() {
+                Key         = TaxBossAppId,
+                Label       = "BOSS app id",
+                Description = "The app id whose balance receives collected tax before it is redistributed to official apps.",
+                Type        = ServerConfigValueType.String,
+                Default     = "",
+                Public      = false
             }
         };
 

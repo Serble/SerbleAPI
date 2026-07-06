@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
+using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Admin;
 
@@ -17,7 +18,8 @@ public class AdminAppsController(
     ILogger<AdminAppsController> logger,
     IAppRepository appRepo,
     IBalanceRepository balanceRepo,
-    IUserRepository userRepo) : ControllerManager {
+    IUserRepository userRepo,
+    ITaxService taxService) : ControllerManager {
 
     // -------- Stats --------
 
@@ -145,6 +147,15 @@ public class AdminAppsController(
         public ulong Amount { get; set; }
     }
 
+    public class AppTaxTargetResponse {
+        public string AppId { get; set; } = "";
+        public string TargetBalance { get; set; } = "0";
+    }
+
+    public class SetAppTaxTargetBody {
+        public ulong TargetBalance { get; set; }
+    }
+
     [HttpGet("{id}/coins")]
     [Authorize(Policy = "Scope:Economy")]
     public async Task<ActionResult<AppCoinBalanceResponse>> GetCoins(string id) {
@@ -188,6 +199,34 @@ public class AdminAppsController(
         logger.LogInformation("Admin {AdminId} removed {Amount} coins from app {AppId} (new balance {Balance})",
             HttpContext.User.GetUserId(), body.Amount, id, bal.Coins);
         return Ok(new AppCoinBalanceResponse { AppId = id, BalanceId = bal.Id, Coins = bal.Coins });
+    }
+
+    [HttpGet("{id}/tax-target-balance")]
+    [Authorize(Policy = "Scope:Economy")]
+    public async Task<ActionResult<AppTaxTargetResponse>> GetTaxTargetBalance(string id) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        if (!app.IsOfficial) return BadRequest("App is not official.");
+        OfficialAppTaxTarget target = await taxService.GetOfficialAppTarget(id);
+        return Ok(new AppTaxTargetResponse {
+            AppId = id,
+            TargetBalance = target.TargetBalance.ToString()
+        });
+    }
+
+    [HttpPut("{id}/tax-target-balance")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
+    public async Task<ActionResult<AppTaxTargetResponse>> SetTaxTargetBalance(string id, [FromBody] SetAppTaxTargetBody body) {
+        OAuthApp? app = await appRepo.GetOAuthApp(id);
+        if (app == null) return NotFound();
+        if (!app.IsOfficial) return BadRequest("App is not official.");
+        await taxService.SetOfficialAppTarget(id, body.TargetBalance);
+        logger.LogInformation("Admin {AdminId} set tax target balance of app {AppId} to {TargetBalance}",
+            HttpContext.User.GetUserId(), id, body.TargetBalance);
+        return Ok(new AppTaxTargetResponse {
+            AppId = id,
+            TargetBalance = body.TargetBalance.ToString()
+        });
     }
 
     // -------- Delete --------

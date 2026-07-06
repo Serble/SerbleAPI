@@ -15,27 +15,29 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/inventory")]
 [Authorize(Policy = "Scope:Economy")]
-public class InventoryController(IItemRepository itemRepo) : ControllerManager {
+public class InventoryController(IItemRepository itemRepo, IAppRepository appRepo) : ControllerManager {
 
     public class InventoryItemResponse {
         public string Id { get; set; } = "";
         public string OwnerType { get; set; } = "";
         public string OwnerId { get; set; } = "";
         public string CreatorAppId { get; set; } = "";
+        public bool CreatorAppIsOfficial { get; set; }
         public DateTime DateCreated { get; set; }
         public string Name { get; set; } = "";
         public string? Description { get; set; }
         public string? IconUrl { get; set; }
 
-        public static InventoryItemResponse From(Item i) => new() {
-            Id           = i.Id,
-            OwnerType    = i.OwnerType.ToString(),
-            OwnerId      = i.OwnerId,
-            CreatorAppId = i.CreatorAppId,
-            DateCreated  = i.DateCreated,
-            Name         = i.Name,
-            Description  = i.Description,
-            IconUrl      = i.IconUrl
+        public static InventoryItemResponse From(Item i, bool creatorAppIsOfficial = false) => new() {
+            Id                  = i.Id,
+            OwnerType           = i.OwnerType.ToString(),
+            OwnerId             = i.OwnerId,
+            CreatorAppId        = i.CreatorAppId,
+            CreatorAppIsOfficial = creatorAppIsOfficial,
+            DateCreated         = i.DateCreated,
+            Name                = i.Name,
+            Description         = i.Description,
+            IconUrl             = i.IconUrl
         };
     }
 
@@ -59,7 +61,18 @@ public class InventoryController(IItemRepository itemRepo) : ControllerManager {
 
         Item[] items = await itemRepo.GetItemsForOwner(
             BalanceOwnerType.User, userId, limit, offset, creatorApp, search);
-        return Ok(items.Select(InventoryItemResponse.From).ToArray());
+        string[] creatorAppIds = items
+            .Select(i => i.CreatorAppId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToArray();
+        OAuthApp[] creatorApps = await appRepo.GetOAuthApps(creatorAppIds);
+        Dictionary<string, bool> creatorOfficial = creatorApps.ToDictionary(a => a.Id, a => a.IsOfficial);
+
+        return Ok(items.Select(i => {
+            bool isOfficial = creatorOfficial.TryGetValue(i.CreatorAppId, out bool val) && val;
+            return InventoryItemResponse.From(i, isOfficial);
+        }).ToArray());
     }
 
     /// <summary>Gets one item the user owns.</summary>
@@ -71,6 +84,7 @@ public class InventoryController(IItemRepository itemRepo) : ControllerManager {
         Item? item = await itemRepo.GetItem(id);
         if (item == null || item.OwnerType != BalanceOwnerType.User || item.OwnerId != userId)
             return NotFound("Item not found.");
-        return Ok(InventoryItemResponse.From(item));
+        OAuthApp? creatorApp = await appRepo.GetOAuthApp(item.CreatorAppId);
+        return Ok(InventoryItemResponse.From(item, creatorApp?.IsOfficial == true));
     }
 }

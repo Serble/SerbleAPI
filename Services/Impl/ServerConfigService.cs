@@ -11,10 +11,25 @@ namespace SerbleAPI.Services.Impl;
 /// </summary>
 public class ServerConfigService(IKvRepository kv) : IServerConfigService {
 
+    private static string EffectiveValue(ServerConfigDefinition def, string? stored) {
+        string value = stored ?? def.Default;
+        if (def.TryValidate(value, out string normalised, out _)) return normalised;
+
+        // When a setting's type changes over time, old persisted values may no longer validate.
+        // Render the effective clamped/default value so the admin UI matches runtime behaviour.
+        if (def.Type == ServerConfigValueType.Percent
+            && decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out decimal pct)) {
+            decimal clamped = pct < 0 ? 0 : pct > 100 ? 100 : pct;
+            return clamped.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return def.Default;
+    }
+
     public async Task<IReadOnlyList<ServerConfigItem>> GetAll() {
         List<ServerConfigItem> items = new(ServerConfigCatalog.All.Count);
         foreach (ServerConfigDefinition def in ServerConfigCatalog.All) {
-            string value = await kv.Get(def.Key) ?? def.Default;
+            string value = EffectiveValue(def, await kv.Get(def.Key));
             items.Add(new ServerConfigItem { Definition = def, Value = value });
         }
         return items;
@@ -23,7 +38,7 @@ public class ServerConfigService(IKvRepository kv) : IServerConfigService {
     public async Task<ServerConfigItem?> Get(string key) {
         ServerConfigDefinition? def = ServerConfigCatalog.Find(key);
         if (def == null) return null;
-        string value = await kv.Get(key) ?? def.Default;
+        string value = EffectiveValue(def, await kv.Get(key));
         return new ServerConfigItem { Definition = def, Value = value };
     }
 

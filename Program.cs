@@ -83,6 +83,8 @@ public static class Program {
         builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
         builder.Services.AddScoped<IRewardTaskService, RewardTaskService>();
         builder.Services.AddScoped<IServerConfigService, ServerConfigService>();
+        builder.Services.AddScoped<ITaxService, TaxService>();
+        builder.Services.AddHostedService<TaxBackgroundService>();
 
         // OIDC provider services
         builder.Services.AddSingleton<IOidcKeyService, OidcKeyService>();
