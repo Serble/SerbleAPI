@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -13,6 +14,7 @@ namespace SerbleAPI.API.v1.Admin;
 [ApiController]
 [Route("api/v1/admin/items")]
 [Authorize(Policy = "AdminOnly")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class AdminItemsController(
     IItemRepository itemRepo,
     IUserRepository userRepo,

@@ -10,6 +10,7 @@ public interface IUserRepository {
     Task<User?> GetUserFromStripeCustomerId(string customerId);
     Task<User> AddUser(User user);
     Task UpdateUser(User user);
+    Task SetLastLogin(string userId, DateTime lastLogin);
     Task DeleteUser(string userId);
     Task<long> CountUsers();
     Task<long> CountVerifiedEmailUsers();

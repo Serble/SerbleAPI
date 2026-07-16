@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 using SerbleAPI.Services;
@@ -158,6 +159,7 @@ public class AdminAppsController(
 
     [HttpGet("{id}/coins")]
     [Authorize(Policy = "Scope:Economy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppCoinBalanceResponse>> GetCoins(string id) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -167,6 +169,7 @@ public class AdminAppsController(
 
     [HttpPost("{id}/coins/set")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppCoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -179,6 +182,7 @@ public class AdminAppsController(
 
     [HttpPost("{id}/coins/add")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppCoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -191,6 +195,7 @@ public class AdminAppsController(
 
     [HttpPost("{id}/coins/remove")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppCoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -203,6 +208,7 @@ public class AdminAppsController(
 
     [HttpGet("{id}/tax-target-balance")]
     [Authorize(Policy = "Scope:Economy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppTaxTargetResponse>> GetTaxTargetBalance(string id) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();
@@ -216,6 +222,7 @@ public class AdminAppsController(
 
     [HttpPut("{id}/tax-target-balance")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppTaxTargetResponse>> SetTaxTargetBalance(string id, [FromBody] SetAppTaxTargetBody body) {
         OAuthApp? app = await appRepo.GetOAuthApp(id);
         if (app == null) return NotFound();

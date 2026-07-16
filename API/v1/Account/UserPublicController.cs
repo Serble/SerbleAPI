@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -88,6 +89,7 @@ public class UserPublicController(
     /// can browse another user's inventory (e.g. to pick items to request in a trade).
     /// </summary>
     [HttpGet("{id}/items")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<PublicItemResponse[]>> GetItems(
         string id,
         [FromQuery] int limit = 50,

@@ -16,6 +16,7 @@ public class AdminConfigController(IServerConfigService config) : ControllerMana
 
     public class ConfigItemDto {
         public string Key { get; set; } = "";
+        public string Group { get; set; } = "";
         public string Label { get; set; } = "";
         public string Description { get; set; } = "";
         public string Type { get; set; } = "";
@@ -25,6 +26,7 @@ public class AdminConfigController(IServerConfigService config) : ControllerMana
 
         public static ConfigItemDto From(ServerConfigItem i) => new() {
             Key         = i.Definition.Key,
+            Group       = i.Definition.Group,
             Label       = i.Definition.Label,
             Description = i.Definition.Description,
             Type        = i.Definition.Type.ToString(),

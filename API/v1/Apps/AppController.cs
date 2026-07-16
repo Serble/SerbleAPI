@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
@@ -190,6 +191,7 @@ public class AppController(
 
     [HttpGet("{appid}/balance")]
     [Authorize(Policy = "Scope:Economy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppBalanceResponse>> GetAppBalance(string appid) {
         (OAuthApp? app, ActionResult? error) = await GetOwnedApp(appid);
         if (error != null) return error;
@@ -229,6 +231,7 @@ public class AppController(
     /// </summary>
     [HttpGet("{appid}/items")]
     [Authorize(Policy = "Scope:ManageApps")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<AppItemResponse[]>> GetAppItems(
         string appid,
         [FromQuery] int limit = 50,

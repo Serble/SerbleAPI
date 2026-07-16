@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -18,6 +19,7 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/transactions/consent")]
 [Authorize(Policy = "UserOnly")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class TransactionConsentController(
     ILogger<TransactionConsentController> logger,
     ITransactionProposalRepository proposalRepo,

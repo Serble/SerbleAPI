@@ -23,6 +23,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/transactions/proposals")]
 [Authorize(Policy = "AppOnly")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class TransactionProposalController(
     ILogger<TransactionProposalController> logger,
     ITransactionProposalRepository proposalRepo,

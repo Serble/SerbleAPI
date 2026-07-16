@@ -15,6 +15,8 @@ public class SanitisedUser {
     public AuthorizedApp[]? AuthorizedApps { get; set; }
     public string? Language { get; set; }
     public bool TotpEnabled { get; set; }
+    public DateTime? DateCreated { get; set; }
+    public DateTime? LastLogin { get; set; }
     
     [Obsolete("Stripe Customer ID is no longer provided to clients for security reasons.")]
     public string? StripeCustomerId { get; set; }
@@ -36,6 +38,8 @@ public class SanitisedUser {
             sanitisedUser.VerifiedEmail = user.VerifiedEmail;
             sanitisedUser.PermLevel = user.PermLevel;
             sanitisedUser.Language = user.Language;
+            sanitisedUser.DateCreated = user.DateCreated;
+            sanitisedUser.LastLogin = user.LastLogin;
         }
 
         if (scopes.Contains("manage_account") || hasFullAccess) {

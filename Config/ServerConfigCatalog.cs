@@ -14,7 +14,9 @@ public enum ServerConfigValueType {
     /// <summary>A percentage entered as a decimal number from 0 to 100 (e.g. <c>12.5</c> for 12.5%).</summary>
     Percent,
     /// <summary>A list of strings, one per line; stored newline-separated, blanks/dupes removed.</summary>
-    StringList
+    StringList,
+    /// <summary>A feature flag mode: enabled for everyone, disabled for everyone, or enabled for configured groups.</summary>
+    FeatureFlagMode
 }
 
 /// <summary>
@@ -24,6 +26,7 @@ public enum ServerConfigValueType {
 /// </summary>
 public class ServerConfigDefinition {
     public string Key { get; init; } = "";
+    public string Group { get; init; } = "General";
     public string Label { get; init; } = "";
     public string Description { get; init; } = "";
     public ServerConfigValueType Type { get; init; }
@@ -102,6 +105,14 @@ public class ServerConfigDefinition {
                     return false;
                 }
                 return true;
+            case ServerConfigValueType.FeatureFlagMode:
+                string mode = normalised.ToLowerInvariant();
+                if (mode is not ("enabled" or "disabled" or "groups")) {
+                    error = $"{Label} must be 'enabled', 'disabled', or 'groups'.";
+                    return false;
+                }
+                normalised = mode;
+                return true;
             default:
                 error = "Unknown setting type.";
                 return false;
@@ -115,6 +126,15 @@ public class ServerConfigDefinition {
 /// values through <see cref="SerbleAPI.Services.IServerConfigService"/>.
 /// </summary>
 public static class ServerConfigCatalog {
+    public const string FeatureFlagsGroup = "Feature flags";
+    public const string EconomyGroup = "Economy";
+
+    /// <summary>Mode for the economy feature flag: enabled, disabled, or groups.</summary>
+    public const string EconomyFeatureMode = "features.economy.mode";
+
+    /// <summary>Group ids that can use the economy feature when its mode is groups.</summary>
+    public const string EconomyFeatureGroups = "features.economy.groups";
+
     /// <summary>Coins an app is charged each time it mints an item (0 disables the fee).</summary>
     public const string ItemCreationFee = "economy.item_creation_fee";
 
@@ -144,61 +164,99 @@ public static class ServerConfigCatalog {
     public static readonly IReadOnlyList<ServerConfigDefinition> All = Build();
 
     private static IReadOnlyList<ServerConfigDefinition> Build() {
-        List<ServerConfigDefinition> list = new() {
+        List<ServerConfigDefinition> list = [
             new() {
-                Key         = ItemCreationFee,
-                Label       = "Item creation fee",
-                Description = "Coins an app is charged each time it mints an item (decimals allowed, e.g. 0.5). Set to 0 to disable the fee.",
-                Type        = ServerConfigValueType.Coins,
-                Default     = "0",
-                Public      = true
+                Key = EconomyFeatureMode,
+                Group = FeatureFlagsGroup,
+                Label = "Economy feature flag",
+                Description =
+                    "Controls whether economy features, including coins, trades, and items, are enabled for everyone, disabled for everyone, or enabled only for configured groups.",
+                Type = ServerConfigValueType.FeatureFlagMode,
+                Default = "disabled",
+                Public = false
             },
+
             new() {
-                Key         = TaxPeriodHours,
-                Label       = "Tax period (hours)",
+                Key = EconomyFeatureGroups,
+                Group = FeatureFlagsGroup,
+                Label = "Economy enabled group ids",
+                Description = "One group id per line. Used only when the economy feature flag mode is 'groups'.",
+                Type = ServerConfigValueType.StringList,
+                Default = "",
+                Public = false
+            },
+
+            new() {
+                Key = ItemCreationFee,
+                Group = EconomyGroup,
+                Label = "Item creation fee",
+                Description =
+                    "Coins an app is charged each time it mints an item (decimals allowed, e.g. 0.5). Set to 0 to disable the fee.",
+                Type = ServerConfigValueType.Coins,
+                Default = "0",
+                Public = true
+            },
+
+            new() {
+                Key = TaxPeriodHours,
+                Group = EconomyGroup,
+                Label = "Tax period (hours)",
                 Description = "How often the server runs the tax cycle. Set to 0 to disable periodic tax collection.",
-                Type        = ServerConfigValueType.Integer,
-                Default     = "0",
-                Public      = false
+                Type = ServerConfigValueType.Integer,
+                Default = "0",
+                Public = false
             },
+
             new() {
-                Key         = TaxFixedRate,
-                Label       = "Fixed tax rate (%)",
-                Description = "Percentage of each user's current balance charged each cycle when dynamic tax mode is off. Decimals are allowed, for example 12.5 means 12.5%.",
-                Type        = ServerConfigValueType.Percent,
-                Default     = "0",
-                Public      = false
+                Key = TaxFixedRate,
+                Group = EconomyGroup,
+                Label = "Fixed tax rate (%)",
+                Description =
+                    "Percentage of each user's current balance charged each cycle when dynamic tax mode is off. Decimals are allowed, for example 12.5 means 12.5%.",
+                Type = ServerConfigValueType.Percent,
+                Default = "0",
+                Public = false
             },
+
             new() {
-                Key         = TaxUseDynamicRate,
-                Label       = "Use dynamic tax rate",
-                Description = "When true, the server computes the percentage of each user's current balance needed to try to meet official-app target balances. When false, the fixed tax rate is used.",
-                Type        = ServerConfigValueType.Boolean,
-                Default     = "false",
-                Public      = false
+                Key = TaxUseDynamicRate,
+                Group = EconomyGroup,
+                Label = "Use dynamic tax rate",
+                Description =
+                    "When true, the server computes the percentage of each user's current balance needed to try to meet official-app target balances. When false, the fixed tax rate is used.",
+                Type = ServerConfigValueType.Boolean,
+                Default = "false",
+                Public = false
             },
+
             new() {
-                Key         = TaxMaxDynamicRate,
-                Label       = "Max dynamic tax rate (%)",
-                Description = "Upper limit for the percentage of each user's current balance that dynamic mode may charge in one cycle. Decimals are allowed. Set to 0 to prevent dynamic tax from charging anything.",
-                Type        = ServerConfigValueType.Percent,
-                Default     = "0",
-                Public      = false
+                Key = TaxMaxDynamicRate,
+                Group = EconomyGroup,
+                Label = "Max dynamic tax rate (%)",
+                Description =
+                    "Upper limit for the percentage of each user's current balance that dynamic mode may charge in one cycle. Decimals are allowed. Set to 0 to prevent dynamic tax from charging anything.",
+                Type = ServerConfigValueType.Percent,
+                Default = "0",
+                Public = false
             },
+
             new() {
-                Key         = TaxBossAppId,
-                Label       = "BOSS app id",
-                Description = "The app id whose balance receives collected tax before it is redistributed to official apps.",
-                Type        = ServerConfigValueType.String,
-                Default     = "",
-                Public      = false
+                Key = TaxBossAppId,
+                Group = EconomyGroup,
+                Label = "BOSS app id",
+                Description =
+                    "The app id whose balance receives collected tax before it is redistributed to official apps.",
+                Type = ServerConfigValueType.String,
+                Default = "",
+                Public = false
             }
-        };
+        ];
 
         // One coin setting per known reward task (generated from the task registry).
         foreach ((string key, string label, string @default) in RewardTasks.All) {
             list.Add(new ServerConfigDefinition {
                 Key         = TaskRewardKey(key),
+                Group       = EconomyGroup,
                 Label       = $"Reward: {label}",
                 Description = $"Coins granted the first time a user completes the '{key}' task. 0 grants nothing.",
                 Type        = ServerConfigValueType.Coins,
@@ -209,6 +267,7 @@ public static class ServerConfigCatalog {
 
         list.Add(new ServerConfigDefinition {
             Key         = AllowedIconUrlPrefixes,
+            Group       = EconomyGroup,
             Label       = "Allowed item icon URL prefixes",
             Description = "One prefix per line. An item icon URL is accepted only if it is empty or starts with one of these.",
             Type        = ServerConfigValueType.StringList,

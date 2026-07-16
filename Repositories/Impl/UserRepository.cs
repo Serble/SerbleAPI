@@ -20,7 +20,8 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         TotpEnabled     = r.TotpEnabled,
         TotpSecret      = r.TotpSecret,
         PasswordSalt    = r.PasswordSalt,
-        DateCreated     = r.DateCreated
+        DateCreated     = r.DateCreated,
+        LastLogin       = r.LastLogin
     };
     
     private User? MapWithRepos(DbUser? r) {
@@ -69,7 +70,8 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             TotpEnabled    = user.TotpEnabled,
             TotpSecret     = user.TotpSecret,
             PasswordSalt   = user.PasswordSalt,
-            DateCreated    = user.DateCreated
+            DateCreated    = user.DateCreated,
+            LastLogin      = user.LastLogin
         });
         await db.SaveChangesAsync();
         return user;
@@ -88,6 +90,14 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         row.TotpEnabled    = user.TotpEnabled;
         row.TotpSecret     = user.TotpSecret;
         row.PasswordSalt   = user.PasswordSalt;
+        row.LastLogin      = user.LastLogin;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SetLastLogin(string userId, DateTime lastLogin) {
+        DbUser? row = await db.Users.FindAsync(userId);
+        if (row == null) return;
+        row.LastLogin = lastLogin;
         await db.SaveChangesAsync();
     }
 

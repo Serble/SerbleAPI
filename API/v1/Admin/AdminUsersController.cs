@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -244,6 +245,7 @@ public class AdminUsersController(
 
     [HttpGet("{id}/coins")]
     [Authorize(Policy = "Scope:Economy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<CoinBalanceResponse>> GetCoins(string id) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -253,6 +255,7 @@ public class AdminUsersController(
 
     [HttpPost("{id}/coins/set")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<CoinBalanceResponse>> SetCoins(string id, [FromBody] SetCoinsBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -265,6 +268,7 @@ public class AdminUsersController(
 
     [HttpPost("{id}/coins/add")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<CoinBalanceResponse>> AddCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -277,6 +281,7 @@ public class AdminUsersController(
 
     [HttpPost("{id}/coins/remove")]
     [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
     public async Task<ActionResult<CoinBalanceResponse>> RemoveCoins(string id, [FromBody] CoinAmountBody body) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
@@ -306,6 +311,7 @@ public class AdminUserView {
     public bool HasPasswordSalt { get; set; }
     public ulong Coins { get; set; }
     public DateTime DateCreated { get; set; }
+    public DateTime? LastLogin { get; set; }
 
     public static AdminUserView From(User u, ulong coins = 0) => new() {
         Id              = u.Id,
@@ -317,6 +323,7 @@ public class AdminUserView {
         Language        = u.Language,
         HasPasswordSalt = !string.IsNullOrEmpty(u.PasswordSalt),
         Coins           = coins,
-        DateCreated     = u.DateCreated
+        DateCreated     = u.DateCreated,
+        LastLogin       = u.LastLogin
     };
 }

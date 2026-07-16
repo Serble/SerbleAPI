@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -15,6 +16,7 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/inventory")]
 [Authorize(Policy = "Scope:Economy")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class InventoryController(IItemRepository itemRepo, IAppRepository appRepo) : ControllerManager {
 
     public class InventoryItemResponse {

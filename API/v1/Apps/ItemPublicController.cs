@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -16,6 +17,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/items")]
 [AllowAnonymous]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class ItemPublicController(
     IItemRepository itemRepo,
     IItemTransactionRepository historyRepo) : ControllerManager {

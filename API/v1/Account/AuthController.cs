@@ -26,6 +26,11 @@ public class AuthController(
     private static readonly MemoryCacheEntryOptions ChallengeExpiry =
         new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
 
+    private async Task<string> GenerateLoginTokenAndRecordLogin(string userId) {
+        await userRepo.SetLastLogin(userId, DateTime.UtcNow);
+        return tokens.GenerateLoginToken(userId);
+    }
+
     [HttpGet("")]
     [HttpPost("password")]
     public async Task<IActionResult> PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader) {
@@ -45,7 +50,7 @@ public class AuthController(
             return Ok(new { mfa_token = mfaToken, success = true, mfa_required = true });
         }
 
-        string token = tokens.GenerateLoginToken(user.Id);
+        string token = await GenerateLoginTokenAndRecordLogin(user.Id);
         return Ok(new { token, success = true, mfa_required = false });
     }
 
@@ -85,7 +90,7 @@ public class AuthController(
                 await passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
             }
 
-            string token = tokens.GenerateLoginToken(creds.OwnerId);
+            string token = await GenerateLoginTokenAndRecordLogin(creds.OwnerId);
             return Ok(new { token, success = true });
         }
         catch (Exception e) {

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -17,6 +18,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/official/users")]
 [Authorize(Policy = "OfficialAppKeyOnly")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class OfficialAppBalanceController(
     ILogger<OfficialAppBalanceController> logger,
     IUserRepository userRepo,

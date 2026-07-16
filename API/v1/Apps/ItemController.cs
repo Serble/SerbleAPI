@@ -20,6 +20,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/items")]
 [Authorize(Policy = "AppOnly")]
+[RequireFeature(FeatureFlagCatalog.Economy)]
 public class ItemController(
     ILogger<ItemController> logger,
     IItemRepository itemRepo,

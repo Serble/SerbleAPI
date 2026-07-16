@@ -33,6 +33,7 @@ public class MfaController(ITokenService tokens, IUserRepository userRepo) : Con
             return Unauthorized("Invalid TOTP code");
         }
 
+        await userRepo.SetLastLogin(user.Id, DateTime.UtcNow);
         string token = tokens.GenerateLoginToken(user.Id);
         return Ok(new {
             token,

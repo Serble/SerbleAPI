@@ -40,4 +40,6 @@ public class DbUser {
     public string? PasswordSalt { get; set; }
     
     public DateTime DateCreated { get; set; }
+
+    public DateTime? LastLogin { get; set; }
 }
