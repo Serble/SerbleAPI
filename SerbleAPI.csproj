@@ -38,4 +38,9 @@
         </EmbeddedResource>
     </ItemGroup>
 
+    <ItemGroup>
+      <_ContentIncludedByDefault Remove="examples\oidc-test-client\package-lock.json" />
+      <_ContentIncludedByDefault Remove="examples\oidc-test-client\package.json" />
+    </ItemGroup>
+
 </Project>

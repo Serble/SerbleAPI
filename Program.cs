@@ -86,6 +86,15 @@ public static class Program {
         builder.Services.AddScoped<IFeatureFlagService, FeatureFlagService>();
         builder.Services.AddScoped<ITaxService, TaxService>();
         builder.Services.AddHostedService<TaxBackgroundService>();
+        builder.Services.AddScoped<IWebhookDeliveryService, WebhookDeliveryService>();
+        builder.Services.AddHostedService<WebhookDispatcherService>();
+
+        // Webhook endpoints are third-party URLs, so the timeout is short and explicit: a delivery
+        // that hangs holds one of the dispatcher's concurrency slots, and the event will be retried
+        // anyway. Handler rotation keeps DNS changes from being cached for the process's lifetime.
+        builder.Services.AddHttpClient(WebhookDeliveryService.HttpClientName, client => {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        }).SetHandlerLifetime(TimeSpan.FromMinutes(5));
 
         // OIDC provider services
         builder.Services.AddSingleton<IOidcKeyService, OidcKeyService>();
@@ -100,6 +109,7 @@ public static class Program {
         builder.Services.AddScoped<ITransactionProposalRepository, TransactionProposalRepository>();
         builder.Services.AddScoped<IUserTradeRepository, UserTradeRepository>();
         builder.Services.AddScoped<IAppApiKeyRepository, AppApiKeyRepository>();
+        builder.Services.AddScoped<IAppWebhookRepository, AppWebhookRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
         builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
         builder.Services.AddScoped<IProductRepository, ProductRepository>();

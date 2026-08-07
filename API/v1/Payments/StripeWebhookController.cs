@@ -1,8 +1,6 @@
-using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
-using Newtonsoft.Json;
 using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;

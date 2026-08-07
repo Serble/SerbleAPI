@@ -1,5 +1,10 @@
 namespace SerbleAPI.Services.Impl;
 
+/// <summary>
+/// Drives the tax schedule. Runs on every replica; <see cref="TaxRunLock"/> and the unique cycle
+/// claim make that safe. Each tick settles at most one cycle boundary, so a backlog drains over
+/// successive ticks rather than in one oversized transaction.
+/// </summary>
 public class TaxBackgroundService(
     IServiceScopeFactory scopeFactory,
     ILogger<TaxBackgroundService> logger) : BackgroundService {

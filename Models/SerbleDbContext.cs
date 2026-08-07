@@ -38,6 +38,10 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbItemTransaction> ItemTransactions { get; set; }
     public virtual DbSet<DbUserTrade> UserTrades { get; set; }
     public virtual DbSet<DbUserTradeItem> UserTradeItems { get; set; }
+    public virtual DbSet<DbTaxCycle> TaxCycles { get; set; }
+    public virtual DbSet<DbTaxAppCharge> TaxAppCharges { get; set; }
+    public virtual DbSet<DbAppWebhook> AppWebhooks { get; set; }
+    public virtual DbSet<DbWebhookDelivery> WebhookDeliveries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         // Keep transaction audit records when a referenced balance is deleted: null the FK
@@ -76,6 +80,28 @@ public class SerbleDbContext : DbContext {
             .HasOne(i => i.TradeNavigation)
             .WithMany()
             .HasForeignKey(i => i.TradeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Per-app tax detail is owned by its cycle: pruning cycle history prunes the detail with it.
+        modelBuilder.Entity<DbTaxAppCharge>()
+            .HasOne(c => c.CycleNavigation)
+            .WithMany()
+            .HasForeignKey(c => c.CycleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Webhook subscriptions belong to their app, and queued deliveries belong to the
+        // subscription — so unsubscribing also drops anything still waiting to be sent, rather
+        // than leaving the dispatcher retrying against an endpoint nobody owns any more.
+        modelBuilder.Entity<DbAppWebhook>()
+            .HasOne(w => w.AppNavigation)
+            .WithMany()
+            .HasForeignKey(w => w.AppId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DbWebhookDelivery>()
+            .HasOne(d => d.WebhookNavigation)
+            .WithMany()
+            .HasForeignKey(d => d.WebhookId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

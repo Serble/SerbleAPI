@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SerbleAPI.Models;
 
@@ -11,9 +12,11 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Migrations
 {
     [DbContext(typeof(SerbleDbContext))]
-    partial class SerbleDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806054452_AddTaxCycles")]
+    partial class AddTaxCycles
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -179,68 +182,6 @@ namespace SerbleAPI.Migrations
                     b.HasIndex("GroupId");
 
                     b.ToTable("AppGroupRules");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbAppWebhook", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("AppId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<int>("ConsecutiveFailures")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("DateUpdated")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("DisabledReason")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("EventTypes")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(512)
-                        .HasColumnType("varchar(512)");
-
-                    b.Property<DateTime?>("LastFailureUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("LastSuccessUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Secret")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("varchar(512)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AppId");
-
-                    b.HasIndex("AppId", "Url")
-                        .IsUnique();
-
-                    b.ToTable("AppWebhooks");
                 });
 
             modelBuilder.Entity("SerbleAPI.Models.DbBalance", b =>
@@ -650,46 +591,6 @@ namespace SerbleAPI.Migrations
                     b.HasIndex("ServiceId");
 
                     b.ToTable("ServiceCatalogItemGroupRules");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbTaxAppCharge", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<ulong>("Amount")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<string>("AppId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<ulong>("BalanceAfter")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<ulong>("BalanceBefore")
-                        .HasColumnType("bigint unsigned");
-
-                    b.Property<string>("BalanceId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<long>("CycleId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CycleId", "AppId");
-
-                    b.HasIndex("CycleId", "BalanceId")
-                        .IsUnique();
-
-                    b.ToTable("TaxAppCharges");
                 });
 
             modelBuilder.Entity("SerbleAPI.Models.DbTaxCycle", b =>
@@ -1199,84 +1100,6 @@ namespace SerbleAPI.Migrations
                     b.ToTable("UserTradeItems");
                 });
 
-            modelBuilder.Entity("SerbleAPI.Models.DbWebhookDelivery", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("AppId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ClaimedBy")
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<DateTime?>("ClaimedUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<long?>("CycleId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("DedupeKey")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("varchar(128)");
-
-                    b.Property<DateTime?>("DeliveredUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(512)
-                        .HasColumnType("varchar(512)");
-
-                    b.Property<int?>("LastResponseCode")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("NextAttemptUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Payload")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<string>("WebhookId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CycleId");
-
-                    b.HasIndex("AppId", "CreatedUtc");
-
-                    b.HasIndex("Status", "NextAttemptUtc");
-
-                    b.HasIndex("WebhookId", "CreatedUtc");
-
-                    b.HasIndex("WebhookId", "DedupeKey")
-                        .IsUnique();
-
-                    b.ToTable("WebhookDeliveries");
-                });
-
             modelBuilder.Entity("SerbleAPI.Models.DbApp", b =>
                 {
                     b.HasOne("SerbleAPI.Models.DbUser", "OwnerNavigation")
@@ -1337,17 +1160,6 @@ namespace SerbleAPI.Migrations
                     b.Navigation("GroupNavigation");
                 });
 
-            modelBuilder.Entity("SerbleAPI.Models.DbAppWebhook", b =>
-                {
-                    b.HasOne("SerbleAPI.Models.DbApp", "AppNavigation")
-                        .WithMany()
-                        .HasForeignKey("AppId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AppNavigation");
-                });
-
             modelBuilder.Entity("SerbleAPI.Models.DbItemTransaction", b =>
                 {
                     b.HasOne("SerbleAPI.Models.DbItem", "ItemNavigation")
@@ -1387,17 +1199,6 @@ namespace SerbleAPI.Migrations
                     b.Navigation("GroupNavigation");
 
                     b.Navigation("ServiceNavigation");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbTaxAppCharge", b =>
-                {
-                    b.HasOne("SerbleAPI.Models.DbTaxCycle", "CycleNavigation")
-                        .WithMany()
-                        .HasForeignKey("CycleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CycleNavigation");
                 });
 
             modelBuilder.Entity("SerbleAPI.Models.DbTransaction", b =>
@@ -1497,17 +1298,6 @@ namespace SerbleAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("TradeNavigation");
-                });
-
-            modelBuilder.Entity("SerbleAPI.Models.DbWebhookDelivery", b =>
-                {
-                    b.HasOne("SerbleAPI.Models.DbAppWebhook", "WebhookNavigation")
-                        .WithMany()
-                        .HasForeignKey("WebhookId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("WebhookNavigation");
                 });
 #pragma warning restore 612, 618
         }

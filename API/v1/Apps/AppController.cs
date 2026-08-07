@@ -18,6 +18,7 @@ public class AppController(
     IUserRepository userRepo,
     IAppApiKeyRepository keyRepo,
     IBalanceRepository balanceRepo,
+    ITransactionRepository transactionRepo,
     IItemRepository itemRepo) : ControllerManager {
 
     // Public endpoint — no auth required
@@ -177,7 +178,7 @@ public class AppController(
         return Ok(new { success = true });
     }
 
-    // -------- App balance (owner-managed, read-only) --------
+    // -------- App balance (owner-managed) --------
 
     public class AppBalanceResponse {
         public string AppId { get; set; } = "";
@@ -189,6 +190,20 @@ public class AppController(
         AppId = appId, BalanceId = b.Id, Coins = b.Coins
     };
 
+    public class AppTransferBody {
+        public ulong Amount { get; set; }
+        public string? Description { get; set; }
+    }
+
+    /// <summary>Both sides of a completed owner ↔ app transfer, so a caller can refresh both.</summary>
+    public class AppTransferResponse {
+        public string AppId { get; set; } = "";
+        public string TransactionId { get; set; } = "";
+        public ulong Amount { get; set; }
+        public ulong AppCoins { get; set; }
+        public ulong UserCoins { get; set; }
+    }
+
     [HttpGet("{appid}/balance")]
     [Authorize(Policy = "Scope:Economy")]
     [RequireFeature(FeatureFlagCatalog.Economy)]
@@ -198,6 +213,66 @@ public class AppController(
         Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.App, app!.Id);
         return Ok(BalanceResponse(app.Id, bal));
     }
+
+    /// <summary>
+    /// Moves coins between the app's balance and its owner's, in the direction given by
+    /// <paramref name="fromOwnerToApp"/>. Zero-sum and atomic (it mints nothing): the owner is the
+    /// only party who can do this, since <see cref="GetOwnedApp"/> has already established that the
+    /// authenticated user is <c>app.OwnerId</c>, which is also the user balance being moved.
+    /// </summary>
+    private async Task<ActionResult<AppTransferResponse>> MoveOwnerCoins(
+        string appid, AppTransferBody body, bool fromOwnerToApp) {
+
+        (OAuthApp? app, ActionResult? error) = await GetOwnedApp(appid);
+        if (error != null) return error;
+        if (body.Amount == 0) return BadRequest("Amount must be greater than zero.");
+
+        // GetOwnedApp guarantees the authenticated user is the owner, so this is always the
+        // caller's own balance — never a third party's.
+        string ownerId = app!.OwnerId;
+
+        TransferOutcome outcome = fromOwnerToApp
+            ? await transactionRepo.Transfer(BalanceOwnerType.User, ownerId, BalanceOwnerType.App, app.Id,
+                body.Amount, body.Description ?? "Owner deposit")
+            : await transactionRepo.Transfer(BalanceOwnerType.App, app.Id, BalanceOwnerType.User, ownerId,
+                body.Amount, body.Description ?? "Owner withdrawal");
+
+        if (!outcome.Success) {
+            return outcome.Error switch {
+                TransferError.ZeroAmount        => BadRequest("Amount must be greater than zero."),
+                TransferError.InsufficientFunds => BadRequest("Insufficient funds."),
+                TransferError.RecipientOverflow => BadRequest("Recipient balance would overflow."),
+                _                               => BadRequest("Transfer failed.")
+            };
+        }
+
+        Balance appBalance = fromOwnerToApp ? outcome.ToBalance! : outcome.FromBalance!;
+        Balance userBalance = fromOwnerToApp ? outcome.FromBalance! : outcome.ToBalance!;
+        logger.LogInformation("Owner {UserId} moved {Amount} coins {Direction} app {AppId}",
+            ownerId, body.Amount, fromOwnerToApp ? "into" : "out of", app.Id);
+
+        return Ok(new AppTransferResponse {
+            AppId         = app.Id,
+            TransactionId = outcome.Transaction!.Id,
+            Amount        = body.Amount,
+            AppCoins      = appBalance.Coins,
+            UserCoins     = userBalance.Coins
+        });
+    }
+
+    /// <summary>Moves coins from the owner's own balance into the app's.</summary>
+    [HttpPost("{appid}/balance/deposit")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
+    public Task<ActionResult<AppTransferResponse>> DepositToApp(string appid, [FromBody] AppTransferBody body) =>
+        MoveOwnerCoins(appid, body, fromOwnerToApp: true);
+
+    /// <summary>Moves coins out of the app's balance into the owner's own.</summary>
+    [HttpPost("{appid}/balance/withdraw")]
+    [Authorize(Policy = "Scope:ManageEconomy")]
+    [RequireFeature(FeatureFlagCatalog.Economy)]
+    public Task<ActionResult<AppTransferResponse>> WithdrawFromApp(string appid, [FromBody] AppTransferBody body) =>
+        MoveOwnerCoins(appid, body, fromOwnerToApp: false);
 
     // -------- App items (owner-managed, read-only) --------
 

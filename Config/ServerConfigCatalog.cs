@@ -128,6 +128,7 @@ public class ServerConfigDefinition {
 public static class ServerConfigCatalog {
     public const string FeatureFlagsGroup = "Feature flags";
     public const string EconomyGroup = "Economy";
+    public const string WebhooksGroup = "Webhooks";
 
     /// <summary>Mode for the economy feature flag: enabled, disabled, or groups.</summary>
     public const string EconomyFeatureMode = "features.economy.mode";
@@ -155,6 +156,15 @@ public static class ServerConfigCatalog {
 
     /// <summary>Allowed prefixes for an item's icon URL (a <see cref="ServerConfigValueType.StringList"/>).</summary>
     public const string AllowedIconUrlPrefixes = "items.allowed_icon_url_prefixes";
+
+    /// <summary>Whether apps may register plain-http webhook endpoints instead of https only.</summary>
+    public const string WebhooksAllowInsecureUrls = "webhooks.allow_insecure_urls";
+
+    /// <summary>Whether apps may register webhook endpoints on private or loopback addresses.</summary>
+    public const string WebhooksAllowPrivateHosts = "webhooks.allow_private_hosts";
+
+    /// <summary>How many webhook subscriptions a single app may have.</summary>
+    public const string WebhooksMaxPerApp = "webhooks.max_per_app";
 
     private const string TaskRewardPrefix = "economy.task_reward.";
 
@@ -264,6 +274,40 @@ public static class ServerConfigCatalog {
                 Public      = false
             });
         }
+
+        list.AddRange([
+            new ServerConfigDefinition {
+                Key         = WebhooksAllowInsecureUrls,
+                Group       = WebhooksGroup,
+                Label       = "Allow insecure (http) webhook URLs",
+                Description =
+                    "When false, an app can only register an https webhook endpoint. Enable only for local development — event payloads and their signatures travel in the clear over http.",
+                Type        = ServerConfigValueType.Boolean,
+                Default     = "false",
+                Public      = false
+            },
+
+            new ServerConfigDefinition {
+                Key         = WebhooksAllowPrivateHosts,
+                Group       = WebhooksGroup,
+                Label       = "Allow private-network webhook hosts",
+                Description =
+                    "When false, webhook endpoints resolving to loopback, private or link-local addresses are rejected. Leave off unless apps genuinely run inside this network: a private endpoint lets an app probe hosts the server can reach but the internet cannot.",
+                Type        = ServerConfigValueType.Boolean,
+                Default     = "false",
+                Public      = false
+            },
+
+            new ServerConfigDefinition {
+                Key         = WebhooksMaxPerApp,
+                Group       = WebhooksGroup,
+                Label       = "Max webhooks per app",
+                Description = "How many webhook subscriptions one app may register. Set to 0 to stop apps registering new webhooks.",
+                Type        = ServerConfigValueType.Integer,
+                Default     = "5",
+                Public      = false
+            }
+        ]);
 
         list.Add(new ServerConfigDefinition {
             Key         = AllowedIconUrlPrefixes,

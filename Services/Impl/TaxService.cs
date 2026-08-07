@@ -9,10 +9,60 @@ using SerbleAPI.Models;
 
 namespace SerbleAPI.Services.Impl;
 
+/// <summary>
+/// Periodic wealth tax: coins are collected from every non-official balance into the BOSS app's
+/// balance, then redistributed to official apps that sit below their configured target.
+///
+/// <para><b>Scaling model.</b> A run never loads the balance table into memory. The rate is
+/// computed from SQL aggregates, then collection walks the clustered primary key in chunks of
+/// <see cref="CollectionChunkSize"/>, each in its own short READ COMMITTED transaction. Lock hold
+/// time is therefore bounded by one chunk rather than by the size of the economy, so ordinary
+/// economy traffic keeps flowing while tax runs.</para>
+///
+/// <para><b>The trade-off.</b> Chunked commits mean a run is no longer atomic — a crash leaves the
+/// population part-taxed. That is recovered rather than prevented: each chunk commits its progress
+/// cursor onto the <see cref="DbTaxCycle"/> row, and the next pass resumes from there instead of
+/// restarting, so no account is charged twice and none is skipped.</para>
+///
+/// <para><b>Concurrency.</b> Two layers. <see cref="TaxRunLock"/> gives coarse server-wide mutual
+/// exclusion so replicas do not collect concurrently; the unique index on
+/// <see cref="DbTaxCycle.ScheduledForUtc"/> is the hard guarantee that a given cycle boundary is
+/// settled at most once, and holds even if the advisory lock is unavailable.</para>
+///
+/// <para><b>Notifications.</b> Apps that subscribe are told what tax did to their balance, but only
+/// through the outbox: rows are written in the transaction that finalises the cycle and delivered
+/// later by <see cref="WebhookDispatcherService"/>. Nothing in this class ever makes an HTTP call —
+/// collection holds row locks, and a hanging app endpoint must not be able to hold them with it.</para>
+/// </summary>
 public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxService {
     private const string LastRunKey = "economy.tax._last_run_utc";
     private const string AppTargetPrefix = "economy.tax.target_balance.";
-    private const int MaxCatchUpCyclesPerRun = 24;
+
+    /// <summary>
+    /// How far behind the schedule may fall before the gap is written off. Cycles older than this
+    /// are recorded as <see cref="TaxCycleStatus.Skipped"/> rather than executed, so a server that
+    /// was down for a month does not spend hours retroactively taxing everyone.
+    /// </summary>
+    private const int MaxCatchUpCycles = 24;
+
+    /// <summary>
+    /// Balances charged per transaction. Trades lock contention against round trips: bigger chunks
+    /// mean fewer commits but longer row-lock holds against live economy traffic.
+    /// </summary>
+    private const int CollectionChunkSize = 500;
+
+    /// <summary>
+    /// Failed attempts before a cycle is abandoned. Interrupted runs are retried rather than
+    /// written off — a half-collected cycle has coins sitting in BOSS and a part-taxed population,
+    /// so finishing it matters more than failing fast — but a cycle that cannot make progress must
+    /// eventually give up or it blocks every later cycle behind it.
+    /// </summary>
+    private const int MaxCycleAttempts = 5;
+
+    private static readonly string InstanceId = $"{Environment.MachineName}:{Environment.ProcessId}";
+
+    /// <summary>Apps exempt from tax, cached for the lifetime of this (scoped) service instance.</summary>
+    private string[]? _exemptAppIds;
 
     private sealed class TaxSettings {
         public required TimeSpan Period { get; init; }
@@ -26,27 +76,32 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
 
     private sealed class OfficialRecipient {
         public required string AppId { get; init; }
-        public required DbBalance Balance { get; init; }
         public required ulong TargetBalance { get; init; }
-        public ulong CurrentBalanceSnapshot { get; init; }
-        public ulong Deficit => TargetBalance > CurrentBalanceSnapshot ? TargetBalance - CurrentBalanceSnapshot : 0;
+        public required ulong CurrentBalance { get; init; }
+        public ulong Deficit => TargetBalance > CurrentBalance ? TargetBalance - CurrentBalance : 0;
     }
 
-    private sealed class TaxComputation {
-        public bool CanRun { get; init; }
-        public string? BlockedReason { get; init; }
+    /// <summary>
+    /// What a run would do, computed entirely from aggregates. Producing a plan never writes
+    /// anything, which is what lets preview and the blocked-reason check share this code path
+    /// without risking a mutation.
+    /// </summary>
+    private sealed class TaxPlan {
         public required TaxSettings Settings { get; init; }
-        public required DbBalance BossBalance { get; init; }
-        public required List<DbBalance> UserBalances { get; init; }
-        public required List<OfficialRecipient> Recipients { get; init; }
+        public required string? BlockedReason { get; init; }
+        public bool CanRun => BlockedReason == null;
         public required ulong BossStartingBalance { get; init; }
         public required decimal RatePercent { get; init; }
-        public required ulong Collected { get; init; }
-        public required int UsersTaxed { get; init; }
-        public required ulong Distributed { get; init; }
+        public required ulong ExpectedCollection { get; init; }
+        public required int ExpectedAccountsTaxed { get; init; }
+        public required ulong ExpectedDistribution { get; init; }
+        public required ulong ExpectedBossEnding { get; init; }
         public required int AppsNeedingFunds { get; init; }
-        public required ulong BossEndingBalance { get; init; }
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Public API
+    // ---------------------------------------------------------------------------------------
 
     public async Task<OfficialAppTaxTarget> GetOfficialAppTarget(string appId, CancellationToken cancellationToken = default) {
         ulong target = await GetAppTarget(appId, cancellationToken);
@@ -59,182 +114,212 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
     }
 
     public async Task<TaxPreview> PreviewTaxRun(CancellationToken cancellationToken = default) {
-        TaxComputation calc = await BuildComputation(applyChanges: false, requireScheduler: false, cancellationToken);
-        return ToPreview(calc);
+        TaxSettings settings = await LoadSettings(cancellationToken);
+        if (!settings.ManualRunEnabled) {
+            return BlockedPreview(settings, "BOSS app id is not configured.");
+        }
+        TaxPlan plan = await BuildPlan(settings, cancellationToken);
+        return ToPreview(plan);
     }
 
     public async Task<TaxRunResult> RunTaxNow(CancellationToken cancellationToken = default) {
-        await using IDbContextTransaction? tx = db.Database.IsRelational()
-            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
-            : null;
-
-        TaxComputation calc = await BuildComputation(applyChanges: true, requireScheduler: false, cancellationToken);
-        if (!calc.CanRun) {
-            if (tx != null) await tx.CommitAsync(cancellationToken);
-            return ToRunResult(calc);
+        TaxSettings settings = await LoadSettings(cancellationToken);
+        if (!settings.ManualRunEnabled) {
+            return ToRunResult(BlockedPreview(settings, "BOSS app id is not configured."), null);
         }
 
-        await UpsertKv(LastRunKey, DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        if (tx != null) await tx.CommitAsync(cancellationToken);
+        await using TaxRunLock runLock = await TaxRunLock.TryAcquire(db, cancellationToken);
+        if (!runLock.Acquired) {
+            return ToRunResult(BlockedPreview(settings, "A tax run is already in progress."), null);
+        }
 
-        logger.LogInformation(
-            "Admin-triggered tax run: mode={Mode}, ratePercent={RatePercent}%, usersTaxed={UsersTaxed}, collectedRaw={CollectedRaw} ({CollectedCoins}), appsPaid={AppsPaid}, distributedRaw={DistributedRaw} ({DistributedCoins}), bossEndingBalanceRaw={BossRaw} ({BossCoins})",
-            calc.Settings.UseDynamicRate ? "dynamic" : "fixed",
-            PercentToString(calc.RatePercent),
-            calc.UsersTaxed,
-            calc.Collected,
-            CoinFixedPoint.ToCoinsString(calc.Collected),
-            calc.AppsNeedingFunds,
-            calc.Distributed,
-            CoinFixedPoint.ToCoinsString(calc.Distributed),
-            calc.BossEndingBalance,
-            CoinFixedPoint.ToCoinsString(calc.BossEndingBalance));
+        // Refuse to start new work on top of an unfinished run — the scheduler resumes those, and
+        // starting a second collection over a half-taxed population would double-charge whichever
+        // accounts the interrupted run had not reached.
+        DbTaxCycle? unfinished = await FindResumableCycle(cancellationToken);
+        if (unfinished != null) {
+            return ToRunResult(
+                BlockedPreview(settings, $"Tax cycle #{unfinished.Id} is unfinished and must be resumed before a new run can start."),
+                unfinished.Id);
+        }
 
-        return ToRunResult(calc);
+        TaxPlan plan = await BuildPlan(settings, cancellationToken);
+        DbTaxCycle? cycle = await ClaimCycle(plan, scheduledFor: null, manual: true, cancellationToken);
+        if (cycle == null) {
+            return ToRunResult(BlockedPreview(settings, "A tax run is already in progress."), null);
+        }
+
+        if ((TaxCycleStatus)cycle.Status == TaxCycleStatus.Blocked) {
+            return ToRunResult(ToPreview(plan), cycle.Id);
+        }
+
+        await ExecuteCycle(cycle.Id, cancellationToken);
+        return await BuildResultFromCycle(cycle.Id, plan.Settings, cancellationToken);
     }
 
     public async Task RunDueTaxCycles(CancellationToken cancellationToken = default) {
-        await using IDbContextTransaction? tx = db.Database.IsRelational()
-            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
-            : null;
+        await using TaxRunLock runLock = await TaxRunLock.TryAcquire(db, cancellationToken);
+        if (!runLock.Acquired) return;
+
+        // Finishing an interrupted run always takes priority, and happens even when the scheduler
+        // has since been disabled — otherwise a run stopped mid-collection would leave the
+        // population permanently part-taxed.
+        DbTaxCycle? resumable = await FindResumableCycle(cancellationToken);
+        if (resumable != null) {
+            logger.LogInformation("Resuming interrupted tax cycle #{CycleId} from phase {Phase}",
+                resumable.Id, (TaxCyclePhase)resumable.Phase);
+            try {
+                await ExecuteCycle(resumable.Id, cancellationToken);
+            }
+            finally {
+                // The resumed boundary must stop being "due" once it settles, or the next pass
+                // would try to claim it again and be rejected by the unique index forever.
+                await AdvanceAnchorPastSettledCycle(resumable.Id, cancellationToken);
+            }
+            return;
+        }
 
         TaxSettings settings = await LoadSettings(cancellationToken);
         DateTime now = DateTime.UtcNow;
+
         if (!settings.SchedulerEnabled) {
-            await UpsertKv(LastRunKey, now.ToString("o", CultureInfo.InvariantCulture), cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
-            if (tx != null) await tx.CommitAsync(cancellationToken);
+            await SetAnchor(now, cancellationToken);
             return;
         }
 
-        DateTime? lastRun = await GetLastRun(cancellationToken);
-        if (lastRun == null) {
-            await UpsertKv(LastRunKey, now.ToString("o", CultureInfo.InvariantCulture), cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
-            if (tx != null) await tx.CommitAsync(cancellationToken);
+        DateTime? anchor = await GetAnchor(cancellationToken);
+        if (anchor == null) {
+            await SetAnchor(now, cancellationToken);
             return;
         }
 
-        int dueCycles = CountDueCycles(lastRun.Value, now, settings.Period);
-        if (dueCycles <= 0) {
-            if (tx != null) await tx.CommitAsync(cancellationToken);
+        if (now < anchor.Value + settings.Period) return;
+
+        long behind = (now - anchor.Value).Ticks / settings.Period.Ticks;
+        if (behind > MaxCatchUpCycles) {
+            long skipped = behind - MaxCatchUpCycles;
+            DateTime skipTo = anchor.Value.AddTicks(settings.Period.Ticks * skipped);
+            await RecordSkippedGap(settings, skipTo, skipped, cancellationToken);
+            anchor = skipTo;
+            await SetAnchor(skipTo, cancellationToken);
+            logger.LogWarning("Tax schedule was {Skipped} cycle(s) beyond the catch-up window; those cycles were recorded as skipped", skipped);
+        }
+
+        // Exactly one cycle per pass. The background service ticks every minute, so a backlog
+        // drains over successive passes instead of collapsing into one enormous transaction.
+        DateTime boundary = anchor.Value + settings.Period;
+        TaxPlan plan = await BuildPlan(settings, cancellationToken);
+        DbTaxCycle? cycle = await ClaimCycle(plan, boundary, manual: false, cancellationToken);
+        if (cycle == null) {
+            // Another replica claimed this boundary, or it was already recorded. Either way it is
+            // settled, so step over it — but only once a row is confirmed to exist, so a transient
+            // write failure cannot silently skip a cycle.
+            bool alreadyRecorded = await db.TaxCycles.AsNoTracking()
+                .AnyAsync(c => c.ScheduledForUtc == boundary, cancellationToken);
+            if (alreadyRecorded) await SetAnchor(boundary, cancellationToken);
             return;
         }
 
-        TaxComputation? lastCalc = null;
-        for (int i = 0; i < dueCycles; i++) {
-            lastCalc = await BuildComputation(applyChanges: true, requireScheduler: true, cancellationToken);
-            if (!lastCalc.CanRun) break;
+        if ((TaxCycleStatus)cycle.Status == TaxCycleStatus.Running) {
+            await ExecuteCycle(cycle.Id, cancellationToken);
+        }
+        else {
+            logger.LogInformation("Tax cycle #{CycleId} for {Boundary:o} recorded as blocked: {Reason}",
+                cycle.Id, boundary, cycle.BlockedReason);
         }
 
-        DateTime processedUntil = lastRun.Value.AddTicks(settings.Period.Ticks * dueCycles);
-        await UpsertKv(LastRunKey, processedUntil.ToString("o", CultureInfo.InvariantCulture), cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        if (tx != null) await tx.CommitAsync(cancellationToken);
-
-        if (lastCalc is { CanRun: true }) {
-            logger.LogInformation(
-                "Processed {CycleCount} tax cycle(s): mode={Mode}, ratePercent={RatePercent}%, usersTaxed={UsersTaxed}, collectedRaw={CollectedRaw} ({CollectedCoins}), appsPaid={AppsPaid}, distributedRaw={DistributedRaw} ({DistributedCoins}), bossEndingBalanceRaw={BossRaw} ({BossCoins})",
-                dueCycles,
-                lastCalc.Settings.UseDynamicRate ? "dynamic" : "fixed",
-                PercentToString(lastCalc.RatePercent),
-                lastCalc.UsersTaxed,
-                lastCalc.Collected,
-                CoinFixedPoint.ToCoinsString(lastCalc.Collected),
-                lastCalc.AppsNeedingFunds,
-                lastCalc.Distributed,
-                CoinFixedPoint.ToCoinsString(lastCalc.Distributed),
-                lastCalc.BossEndingBalance,
-                CoinFixedPoint.ToCoinsString(lastCalc.BossEndingBalance));
-        }
+        // The boundary is settled either way. A blocked cycle advances the schedule because it
+        // leaves a row explaining itself, rather than being silently dropped.
+        await SetAnchor(boundary, cancellationToken);
     }
 
-    private async Task<TaxComputation> BuildComputation(bool applyChanges, bool requireScheduler, CancellationToken cancellationToken) {
-        TaxSettings settings = await LoadSettings(cancellationToken);
-        if (requireScheduler && !settings.SchedulerEnabled) {
-            return EmptyComputation(settings, "Tax scheduler is disabled.");
-        }
-        if (!requireScheduler && !settings.ManualRunEnabled) {
-            return EmptyComputation(settings, "BOSS app id is not configured.");
-        }
+    public async Task<TaxCyclePage> GetTaxCycles(int skip, int take, CancellationToken cancellationToken = default) {
+        long total = await db.TaxCycles.AsNoTracking().LongCountAsync(cancellationToken);
+        List<DbTaxCycle> rows = await db.TaxCycles.AsNoTracking()
+            .OrderByDescending(c => c.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+        return new TaxCyclePage { Cycles = rows.Select(ToRecord).ToList(), TotalCount = total };
+    }
 
+    public async Task<TaxCycleRecord?> GetTaxCycle(long id, CancellationToken cancellationToken = default) {
+        DbTaxCycle? row = await db.TaxCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        return row == null ? null : ToRecord(row);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Planning (read-only)
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Works out the rate and expected outcome from SQL aggregates alone — three scalar queries
+    /// regardless of how many balances exist. Guaranteed not to write anything.
+    /// </summary>
+    private async Task<TaxPlan> BuildPlan(TaxSettings settings, CancellationToken cancellationToken) {
         DbApp? bossApp = await db.Apps.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == settings.BossAppId, cancellationToken);
         if (bossApp == null) {
-            return EmptyComputation(settings, $"Configured BOSS app '{settings.BossAppId}' does not exist.");
+            return EmptyPlan(settings, $"Configured BOSS app '{settings.BossAppId}' does not exist.");
         }
 
-        DbBalance bossBalance = await GetOrCreateDefaultBalance(BalanceOwnerType.App, settings.BossAppId, cancellationToken);
-        ulong bossStartingBalance = bossBalance.Coins;
+        ulong bossStartingBalance = await ReadDefaultBalanceCoins(BalanceOwnerType.App, settings.BossAppId, cancellationToken);
+        ulong bossCapacity = ulong.MaxValue - bossStartingBalance;
 
-        List<DbBalance> userBalances = await LoadDefaultBalances(BalanceOwnerType.User, ownerIds: null, cancellationToken);
-        List<OfficialRecipient> recipients = await LoadOfficialRecipients(settings.BossAppId, cancellationToken);
+        string[] exempt = await GetExemptAppIds(settings.BossAppId, cancellationToken);
+        List<OfficialRecipient> recipients = await LoadRecipients(settings.BossAppId, cancellationToken);
         int appsNeedingFunds = recipients.Count(r => r.Deficit > 0);
 
-        ulong bossCapacity = ulong.MaxValue - bossStartingBalance;
-        decimal ratePercent = settings.UseDynamicRate
-            ? ComputeDynamicRatePercent(userBalances.Select(b => b.Coins).ToArray(), recipients, bossStartingBalance, bossCapacity, settings.MaxDynamicRatePercent)
-            : ComputeFixedRatePercent(userBalances.Select(b => b.Coins).ToArray(), bossCapacity, settings.FixedRatePercent);
+        decimal totalWealth = await SumTaxableCoins(exempt, cancellationToken);
+        long taxableCount = await CountTaxableBalances(exempt, cancellationToken);
 
-        (ulong collected, int usersTaxed) = applyChanges
-            ? CollectTaxes(userBalances, bossBalance, ratePercent)
-            : PreviewCollection(userBalances, ratePercent);
-        if (collected > bossCapacity) {
-            if (applyChanges) {
-                throw new InvalidOperationException("Computed tax collection exceeded BOSS capacity.");
-            }
-            collected = bossCapacity;
+        decimal ratePercent = settings.UseDynamicRate
+            ? ComputeDynamicRatePercent(totalWealth, recipients, bossStartingBalance, settings.MaxDynamicRatePercent)
+            : ClampPercent(settings.FixedRatePercent);
+        ratePercent = CapRateToBossCapacity(ratePercent, totalWealth, taxableCount, bossCapacity);
+
+        ulong expectedCollection = 0;
+        int expectedAccountsTaxed = 0;
+        if (ratePercent > 0) {
+            expectedCollection = ClampToUlong(await SumTaxDue(exempt, ratePercent, cancellationToken), bossCapacity);
+            expectedAccountsTaxed = (int)Math.Min(await CountTaxDuePayers(exempt, ratePercent, cancellationToken), int.MaxValue);
         }
 
-        ulong bossAfterCollection = bossStartingBalance + collected;
-        (ulong distributed, _) = applyChanges
-            ? DistributeBossFunds(bossBalance, recipients)
-            : PreviewDistribution(bossAfterCollection, recipients);
-        ulong bossEndingBalance = bossAfterCollection - distributed;
+        ulong bossAfterCollection = bossStartingBalance + expectedCollection;
+        ulong expectedDistribution = PreviewDistribution(bossAfterCollection, recipients);
 
         string? blockedReason = DetermineBlockedReason(
-            settings,
-            recipients,
-            userBalances,
-            bossCapacity,
-            ratePercent,
-            collected,
-            distributed);
+            settings, recipients, totalWealth, bossCapacity, ratePercent, expectedCollection, expectedDistribution);
 
-        return new TaxComputation {
-            CanRun = blockedReason == null,
-            BlockedReason = blockedReason,
+        return new TaxPlan {
             Settings = settings,
-            BossBalance = bossBalance,
-            UserBalances = userBalances,
-            Recipients = recipients,
+            BlockedReason = blockedReason,
             BossStartingBalance = bossStartingBalance,
             RatePercent = ratePercent,
-            Collected = collected,
-            UsersTaxed = usersTaxed,
-            Distributed = distributed,
-            AppsNeedingFunds = appsNeedingFunds,
-            BossEndingBalance = bossEndingBalance
+            ExpectedCollection = expectedCollection,
+            ExpectedAccountsTaxed = expectedAccountsTaxed,
+            ExpectedDistribution = expectedDistribution,
+            ExpectedBossEnding = bossAfterCollection - expectedDistribution,
+            AppsNeedingFunds = appsNeedingFunds
         };
     }
 
     private static string? DetermineBlockedReason(
         TaxSettings settings,
         IReadOnlyCollection<OfficialRecipient> recipients,
-        IReadOnlyCollection<DbBalance> userBalances,
+        decimal totalTaxableWealth,
         ulong bossCapacity,
         decimal ratePercent,
-        ulong collected,
-        ulong distributed) {
+        ulong expectedCollection,
+        ulong expectedDistribution) {
 
         if (bossCapacity == 0) {
             return "The BOSS account balance is already at the maximum value, so it cannot receive any more tax.";
         }
-        if (collected > 0 || distributed > 0) return null;
+        if (expectedCollection > 0 || expectedDistribution > 0) return null;
 
         int appsNeedingFunds = recipients.Count(r => r.Deficit > 0);
-        bool anyUsersWithCoins = userBalances.Any(b => b.Coins > 0);
+        bool anyCoinsToTax = totalTaxableWealth > 0;
 
         if (settings.UseDynamicRate) {
             if (settings.MaxDynamicRatePercent == 0) {
@@ -243,8 +328,8 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             if (appsNeedingFunds == 0) {
                 return "No official apps currently need funds because all configured target balances are already met.";
             }
-            if (!anyUsersWithCoins) {
-                return "Official apps need funds, but no users currently have any coins available to tax.";
+            if (!anyCoinsToTax) {
+                return "Official apps need funds, but no taxable accounts currently have any coins available to tax.";
             }
             if (ratePercent == 0) {
                 return "The dynamic tax calculation resolved to 0% with the current balances.";
@@ -255,173 +340,437 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         if (settings.FixedRatePercent == 0) {
             return "Fixed tax mode is enabled, but the fixed tax rate setting is 0%.";
         }
-        if (!anyUsersWithCoins) {
-            return "The fixed tax rate is set, but no users currently have any coins available to tax.";
+        if (!anyCoinsToTax) {
+            return "The fixed tax rate is set, but no taxable accounts currently have any coins available to tax.";
         }
         return "With the current balances and settings, a tax run would not collect or distribute any coins after rounding.";
     }
 
-    private TaxPreview ToPreview(TaxComputation calc) => new() {
-        CanRun = calc.CanRun,
-        BlockedReason = calc.BlockedReason,
-        DynamicRate = calc.Settings.UseDynamicRate,
-        BossAppId = calc.Settings.BossAppId,
-        Rate = PercentToString(calc.RatePercent),
-        FixedRate = PercentToString(calc.Settings.FixedRatePercent),
-        MaxDynamicRate = PercentToString(calc.Settings.MaxDynamicRatePercent),
-        UsersTaxed = calc.UsersTaxed,
-        Collected = calc.Collected,
-        AppsNeedingFunds = calc.AppsNeedingFunds,
-        Distributed = calc.Distributed,
-        BossStartingBalance = calc.BossStartingBalance,
-        BossEndingBalance = calc.BossEndingBalance
-    };
-
-    private TaxRunResult ToRunResult(TaxComputation calc) => new() {
-        CanRun = calc.CanRun,
-        BlockedReason = calc.BlockedReason,
-        DynamicRate = calc.Settings.UseDynamicRate,
-        BossAppId = calc.Settings.BossAppId,
-        Rate = PercentToString(calc.RatePercent),
-        FixedRate = PercentToString(calc.Settings.FixedRatePercent),
-        MaxDynamicRate = PercentToString(calc.Settings.MaxDynamicRatePercent),
-        UsersTaxed = calc.UsersTaxed,
-        Collected = calc.Collected,
-        AppsNeedingFunds = calc.AppsNeedingFunds,
-        Distributed = calc.Distributed,
-        BossStartingBalance = calc.BossStartingBalance,
-        BossEndingBalance = calc.BossEndingBalance
-    };
-
-    private TaxComputation EmptyComputation(TaxSettings settings, string reason) => new() {
-        CanRun = false,
-        BlockedReason = reason,
-        Settings = settings,
-        BossBalance = new DbBalance {
-            Id = "",
-            OwnerType = (int)BalanceOwnerType.App,
-            OwnerId = settings.BossAppId,
-            Coins = 0,
-            DateCreated = default
-        },
-        UserBalances = [],
-        Recipients = [],
-        BossStartingBalance = 0,
-        RatePercent = 0,
-        Collected = 0,
-        UsersTaxed = 0,
-        Distributed = 0,
-        AppsNeedingFunds = 0,
-        BossEndingBalance = 0
-    };
-
-    private async Task<TaxSettings> LoadSettings(CancellationToken cancellationToken) {
-        ulong periodHours = await GetIntegerConfig(ServerConfigCatalog.TaxPeriodHours, cancellationToken);
-        return new TaxSettings {
-            Period = periodHours == 0
-                ? TimeSpan.Zero
-                : TimeSpan.FromHours(Math.Min(periodHours, (ulong)TimeSpan.MaxValue.TotalHours)),
-            FixedRatePercent = await GetPercentConfig(ServerConfigCatalog.TaxFixedRate, cancellationToken),
-            UseDynamicRate = await GetBooleanConfig(ServerConfigCatalog.TaxUseDynamicRate, cancellationToken),
-            MaxDynamicRatePercent = await GetPercentConfig(ServerConfigCatalog.TaxMaxDynamicRate, cancellationToken),
-            BossAppId = await GetStringConfig(ServerConfigCatalog.TaxBossAppId, cancellationToken)
-        };
-    }
-
-    private int CountDueCycles(DateTime lastRun, DateTime now, TimeSpan period) {
-        if (period <= TimeSpan.Zero || now < lastRun + period) return 0;
-        long elapsedTicks = now.Ticks - lastRun.Ticks;
-        long due = elapsedTicks / period.Ticks;
-        return (int)Math.Clamp(due, 0, MaxCatchUpCyclesPerRun);
-    }
-
-    private async Task<List<OfficialRecipient>> LoadOfficialRecipients(string bossAppId, CancellationToken cancellationToken) {
-        string[] officialAppIds = await db.Apps.AsNoTracking()
-            .Where(a => a.IsOfficial && a.Id != bossAppId)
-            .OrderBy(a => a.Id)
-            .Select(a => a.Id)
-            .ToArrayAsync(cancellationToken);
-        if (officialAppIds.Length == 0) return [];
-
-        Dictionary<string, DbBalance> balances = (await LoadDefaultBalances(BalanceOwnerType.App, officialAppIds, cancellationToken))
-            .ToDictionary(b => b.OwnerId, b => b);
-        string[] targetKeys = officialAppIds.Select(AppTargetKey).ToArray();
-        Dictionary<string, string> targetValues = await db.Kvs.AsNoTracking()
-            .Where(k => targetKeys.Contains(k.Key))
-            .ToDictionaryAsync(k => k.Key, k => k.Value, cancellationToken);
-
-        List<OfficialRecipient> recipients = new(officialAppIds.Length);
-        foreach (string appId in officialAppIds) {
-            DbBalance balance = balances[appId];
-            ulong target = targetValues.TryGetValue(AppTargetKey(appId), out string? raw)
-                       && ulong.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed)
-                ? parsed
-                : 0;
-            recipients.Add(new OfficialRecipient {
-                AppId = appId,
-                Balance = balance,
-                TargetBalance = target,
-                CurrentBalanceSnapshot = balance.Coins
-            });
-        }
-        return recipients;
-    }
-
     private static decimal ComputeDynamicRatePercent(
-        IReadOnlyCollection<ulong> userBalances,
+        decimal totalUserWealth,
         IReadOnlyCollection<OfficialRecipient> recipients,
         ulong bossStartBalance,
-        ulong bossCapacity,
         decimal maxDynamicRatePercent) {
 
-        if (maxDynamicRatePercent <= 0 || userBalances.Count == 0 || bossCapacity == 0) return 0;
+        if (maxDynamicRatePercent <= 0 || totalUserWealth <= 0) return 0;
 
         decimal totalDeficit = recipients.Sum(r => (decimal)r.Deficit);
         if (totalDeficit <= bossStartBalance) return 0;
 
-        decimal totalUserWealth = userBalances.Sum(v => (decimal)v);
-        if (totalUserWealth <= 0) return 0;
-
         decimal neededCollection = totalDeficit - bossStartBalance;
         decimal computedPercent = neededCollection / totalUserWealth * 100m;
-        decimal requestedPercent = ClampPercent(computedPercent > maxDynamicRatePercent ? maxDynamicRatePercent : computedPercent);
-        return FindLargestSafePercent(userBalances, bossCapacity, requestedPercent);
+        return ClampPercent(computedPercent > maxDynamicRatePercent ? maxDynamicRatePercent : computedPercent);
     }
 
-    private static decimal ComputeFixedRatePercent(
-        IReadOnlyCollection<ulong> userBalances,
-        ulong bossCapacity,
-        decimal configuredRatePercent) {
-        decimal requestedPercent = ClampPercent(configuredRatePercent);
-        return requestedPercent <= 0 || bossCapacity == 0
-            ? 0
-            : FindLargestSafePercent(userBalances, bossCapacity, requestedPercent);
+    /// <summary>
+    /// Lowers the rate if collecting it would overflow the BOSS balance. Per-balance rounding can
+    /// add at most half a coin each, so the worst case is bounded by
+    /// <c>wealth * rate + count / 2</c> — which makes this an O(1) calculation rather than the
+    /// repeated whole-table simulation it replaces.
+    /// </summary>
+    private static decimal CapRateToBossCapacity(decimal ratePercent, decimal totalWealth, long balanceCount, ulong bossCapacity) {
+        if (ratePercent <= 0 || totalWealth <= 0) return ratePercent <= 0 ? 0 : ratePercent;
+
+        decimal headroom = bossCapacity - (balanceCount + 1) / 2m;
+        if (headroom <= 0) return 0;
+
+        decimal worstCase = totalWealth * (ratePercent / 100m);
+        return worstCase <= headroom ? ratePercent : ClampPercent(headroom / totalWealth * 100m);
     }
 
-    private static decimal ClampPercent(decimal percent) =>
-        percent <= 0 ? 0 : percent >= 100 ? 100 : percent;
+    private static ulong PreviewDistribution(ulong bossAvailable, IReadOnlyCollection<OfficialRecipient> recipients) {
+        Dictionary<string, ulong> payouts = ComputeEvenPayouts(recipients, bossAvailable);
+        ulong total = 0;
+        foreach (ulong payout in payouts.Values) total += payout;
+        return total;
+    }
 
-    private static decimal FindLargestSafePercent(
-        IReadOnlyCollection<ulong> userBalances,
-        ulong bossCapacity,
-        decimal maxPercent) {
+    // ---------------------------------------------------------------------------------------
+    // Cycle lifecycle
+    // ---------------------------------------------------------------------------------------
 
-        decimal clampedMax = ClampPercent(maxPercent);
-        if (clampedMax <= 0 || bossCapacity == 0 || userBalances.Count == 0) return 0;
-        if (PreviewCollection(userBalances, clampedMax).collected <= bossCapacity) {
-            return clampedMax;
+    /// <summary>
+    /// Records the cycle. For scheduled runs the INSERT is the claim: the unique index on
+    /// <see cref="DbTaxCycle.ScheduledForUtc"/> means a duplicate key here is another instance
+    /// having already taken this boundary, so we return null and do nothing.
+    /// </summary>
+    private async Task<DbTaxCycle?> ClaimCycle(TaxPlan plan, DateTime? scheduledFor, bool manual, CancellationToken cancellationToken) {
+        DbTaxCycle cycle = new() {
+            ScheduledForUtc = scheduledFor,
+            IsManual = manual,
+            Status = (int)(plan.CanRun ? TaxCycleStatus.Running : TaxCycleStatus.Blocked),
+            Phase = (int)(plan.CanRun ? TaxCyclePhase.Collecting : TaxCyclePhase.Finished),
+            StartedAt = DateTime.UtcNow,
+            CompletedAt = plan.CanRun ? null : DateTime.UtcNow,
+            LeaseOwner = InstanceId,
+            LeaseRenewedUtc = DateTime.UtcNow,
+            DynamicRate = plan.Settings.UseDynamicRate,
+            RatePercent = plan.RatePercent,
+            BossAppId = plan.Settings.BossAppId,
+            BossStartingBalance = plan.BossStartingBalance,
+            BossEndingBalance = plan.CanRun ? 0 : plan.BossStartingBalance,
+            AppsNeedingFunds = plan.AppsNeedingFunds,
+            CursorBalanceId = "",
+            BlockedReason = Truncate(plan.BlockedReason, 512)
+        };
+
+        db.TaxCycles.Add(cycle);
+        try {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) {
+            logger.LogInformation(ex, "Tax cycle for {Boundary:o} was already claimed by another instance", scheduledFor);
+            db.ChangeTracker.Clear();
+            return null;
         }
 
-        decimal low = 0;
-        decimal high = clampedMax;
-        for (int i = 0; i < 48; i++) {
-            decimal mid = (low + high) / 2m;
-            ulong collected = PreviewCollection(userBalances, mid).collected;
-            if (collected <= bossCapacity) low = mid;
-            else high = mid;
-        }
-        return low;
+        db.ChangeTracker.Clear();
+        return cycle;
     }
+
+    /// <summary>
+    /// An unfinished run. Safe to treat as abandoned without checking the lease, because reaching
+    /// here means we hold the run lock and therefore nobody else is working it.
+    /// </summary>
+    private Task<DbTaxCycle?> FindResumableCycle(CancellationToken cancellationToken) {
+        int running = (int)TaxCycleStatus.Running;
+        return db.TaxCycles.AsNoTracking()
+            .Where(c => c.Status == running)
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task ExecuteCycle(long cycleId, CancellationToken cancellationToken) {
+        try {
+            // Entering by phase rather than from the start is what makes an interrupted run
+            // resumable: collection picks up at the stored cursor, and a run that died after
+            // collecting goes straight to distribution.
+            TaxCyclePhase phase = await GetCyclePhase(cycleId, cancellationToken);
+            while (phase == TaxCyclePhase.Collecting) {
+                phase = await CollectChunk(cycleId, cancellationToken);
+            }
+            if (phase == TaxCyclePhase.Distributing) {
+                await Distribute(cycleId, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) {
+            // Shutdown mid-run. Committed chunks stand and the cycle stays Running, so the next
+            // pass resumes from the cursor.
+            throw;
+        }
+        catch (Exception ex) {
+            await RecordAttemptFailure(cycleId, ex, cancellationToken);
+            throw;
+        }
+
+        DbTaxCycle? done = await db.TaxCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cycleId, cancellationToken);
+        if (done == null) return;
+
+        logger.LogInformation(
+            "Tax cycle #{CycleId} complete: mode={Mode}, ratePercent={RatePercent}%, accountsTaxed={AccountsTaxed}, collectedRaw={CollectedRaw} ({CollectedCoins}), appsPaid={AppsPaid}, distributedRaw={DistributedRaw} ({DistributedCoins}), bossEndingBalanceRaw={BossRaw} ({BossCoins})",
+            done.Id,
+            done.DynamicRate ? "dynamic" : "fixed",
+            PercentToString(done.RatePercent),
+            done.AccountsTaxed,
+            done.Collected,
+            CoinFixedPoint.ToCoinsString(done.Collected),
+            done.AppsPaid,
+            done.Distributed,
+            CoinFixedPoint.ToCoinsString(done.Distributed),
+            done.BossEndingBalance,
+            CoinFixedPoint.ToCoinsString(done.BossEndingBalance));
+    }
+
+    /// <summary>
+    /// Moves the schedule anchor past a cycle that has reached a terminal state. A cycle still
+    /// Running is left alone: it is awaiting another resume attempt and its boundary is not
+    /// settled yet.
+    /// </summary>
+    private async Task AdvanceAnchorPastSettledCycle(long cycleId, CancellationToken cancellationToken) {
+        try {
+            DbTaxCycle? cycle = await db.TaxCycles.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cycleId, cancellationToken);
+            if (cycle?.ScheduledForUtc == null) return;
+            if ((TaxCycleStatus)cycle.Status == TaxCycleStatus.Running) return;
+
+            DateTime? anchor = await GetAnchor(cancellationToken);
+            if (anchor == null || anchor.Value < cycle.ScheduledForUtc.Value) {
+                await SetAnchor(cycle.ScheduledForUtc.Value, cancellationToken);
+            }
+        }
+        catch (Exception ex) {
+            logger.LogError(ex, "Failed to advance the tax schedule anchor past cycle #{CycleId}", cycleId);
+        }
+    }
+
+    private async Task<TaxCyclePhase> GetCyclePhase(long cycleId, CancellationToken cancellationToken) {
+        int phase = await db.TaxCycles.AsNoTracking()
+            .Where(c => c.Id == cycleId)
+            .Select(c => c.Phase)
+            .FirstOrDefaultAsync(cancellationToken);
+        return (TaxCyclePhase)phase;
+    }
+
+    /// <summary>
+    /// Records a failed attempt. The cycle stays Running — and therefore resumable from its
+    /// cursor — until it has burned through <see cref="MaxCycleAttempts"/>, at which point it is
+    /// marked Failed so the schedule can move past it. Committed chunks are kept either way; a
+    /// Failed cycle leaves a part-taxed population and needs an admin to look at it.
+    /// </summary>
+    private async Task RecordAttemptFailure(long cycleId, Exception ex, CancellationToken cancellationToken) {
+        try {
+            db.ChangeTracker.Clear();
+            DbTaxCycle? cycle = await db.TaxCycles.FirstOrDefaultAsync(c => c.Id == cycleId, cancellationToken);
+            if (cycle == null) return;
+
+            cycle.Attempts++;
+            cycle.BlockedReason = Truncate($"Attempt {cycle.Attempts} failed: {ex.Message}", 512);
+            if (cycle.Attempts >= MaxCycleAttempts) {
+                cycle.Status = (int)TaxCycleStatus.Failed;
+                cycle.CompletedAt = DateTime.UtcNow;
+                logger.LogError(ex,
+                    "Tax cycle #{CycleId} abandoned after {Attempts} failed attempts; it stopped at phase {Phase} with {Collected} coins collected and needs manual review",
+                    cycleId, cycle.Attempts, (TaxCyclePhase)cycle.Phase, cycle.Collected);
+            }
+            else {
+                logger.LogWarning(ex, "Tax cycle #{CycleId} attempt {Attempts} failed; it will resume from its cursor on the next pass",
+                    cycleId, cycle.Attempts);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception recordEx) {
+            logger.LogError(recordEx, "Failed to record the failure of tax cycle #{CycleId}", cycleId);
+        }
+        finally {
+            db.ChangeTracker.Clear();
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Collection
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Charges one chunk of balances and commits. Rows are taken with <c>FOR UPDATE</c> so a
+    /// concurrent spend cannot be lost between reading a balance and writing the taxed value, and
+    /// the cursor advances in the same transaction as the charges so a crash cannot re-charge or
+    /// skip anyone.
+    /// </summary>
+    /// <returns>The phase the cycle is left in — still Collecting if more chunks remain.</returns>
+    private async Task<TaxCyclePhase> CollectChunk(long cycleId, CancellationToken cancellationToken) {
+        db.ChangeTracker.Clear();
+        await using IDbContextTransaction? tx = await BeginReadCommitted(cancellationToken);
+
+        DbTaxCycle cycle = await db.TaxCycles.FirstAsync(c => c.Id == cycleId, cancellationToken);
+        string[] exempt = await GetExemptAppIds(cycle.BossAppId, cancellationToken);
+
+        // BOSS is locked before the chunk, matching the order Distribute uses. Taking the two in a
+        // consistent order across both phases removes one class of deadlock against each other and
+        // against economy traffic that credits BOSS.
+        DbBalance boss = await LoadDefaultBalanceForUpdate(BalanceOwnerType.App, cycle.BossAppId, cancellationToken);
+        ulong remainingCapacity = ulong.MaxValue - boss.Coins;
+
+        List<DbBalance> chunk = await LoadChunkForUpdate(cycle.CursorBalanceId, exempt, cancellationToken);
+        if (chunk.Count == 0) {
+            cycle.Phase = (int)TaxCyclePhase.Distributing;
+            cycle.LeaseOwner = InstanceId;
+            cycle.LeaseRenewedUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            if (tx != null) await tx.CommitAsync(cancellationToken);
+            return TaxCyclePhase.Distributing;
+        }
+
+        ulong chunkTotal = 0;
+        int chunkAccounts = 0;
+        DateTime createdAt = DateTime.UtcNow;
+        string cursor = cycle.CursorBalanceId;
+
+        foreach (DbBalance balance in chunk) {
+            cursor = balance.Id;
+            if (balance.Id == boss.Id) continue;
+
+            ulong due = ComputeDueFromPercent(balance.Coins, cycle.RatePercent);
+            if (due > remainingCapacity) due = remainingCapacity;
+            if (due == 0) continue;
+
+            ulong balanceBefore = balance.Coins;
+            balance.Coins -= due;
+            remainingCapacity -= due;
+            chunkTotal += due;
+            chunkAccounts++;
+
+            // App charges are tallied durably so the notification emitted at the end of the run
+            // still reports the full amount after an interrupted cycle resumes. Only apps: user
+            // balances are the bulk of the table and nobody is notified about them.
+            if (balance.OwnerType == (int)BalanceOwnerType.App) {
+                db.TaxAppCharges.Add(new DbTaxAppCharge {
+                    CycleId = cycle.Id,
+                    AppId = balance.OwnerId,
+                    BalanceId = balance.Id,
+                    Amount = due,
+                    BalanceBefore = balanceBefore,
+                    BalanceAfter = balance.Coins
+                });
+            }
+
+            db.Transactions.Add(new DbTransaction {
+                Id = Guid.NewGuid().ToString(),
+                FromBalanceId = balance.Id,
+                ToBalanceId = boss.Id,
+                Amount = due,
+                Description = $"Periodic tax collection (cycle #{cycle.Id})",
+                DateCreated = createdAt
+            });
+        }
+
+        boss.Coins += chunkTotal;
+        cycle.Collected += chunkTotal;
+        cycle.AccountsTaxed += chunkAccounts;
+        cycle.CursorBalanceId = cursor;
+        cycle.LeaseOwner = InstanceId;
+        cycle.LeaseRenewedUtc = DateTime.UtcNow;
+
+        // Nothing further can be collected once BOSS is full, so stop walking the table.
+        if (remainingCapacity == 0) {
+            cycle.Phase = (int)TaxCyclePhase.Distributing;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        if (tx != null) await tx.CommitAsync(cancellationToken);
+        return (TaxCyclePhase)cycle.Phase;
+    }
+
+    private async Task Distribute(long cycleId, CancellationToken cancellationToken) {
+        db.ChangeTracker.Clear();
+        await using IDbContextTransaction? tx = await BeginReadCommitted(cancellationToken);
+
+        DbTaxCycle cycle = await db.TaxCycles.FirstAsync(c => c.Id == cycleId, cancellationToken);
+        DbBalance boss = await LoadDefaultBalanceForUpdate(BalanceOwnerType.App, cycle.BossAppId, cancellationToken);
+
+        List<OfficialRecipient> recipients = await LoadRecipients(cycle.BossAppId, cancellationToken);
+        Dictionary<string, ulong> payouts = ComputeEvenPayouts(recipients, boss.Coins);
+
+        ulong totalDistributed = 0;
+        int appsPaid = 0;
+        DateTime createdAt = DateTime.UtcNow;
+        List<AppBalanceChange> paid = [];
+
+        foreach (OfficialRecipient recipient in recipients.OrderBy(r => r.AppId)) {
+            if (!payouts.TryGetValue(recipient.AppId, out ulong payout) || payout == 0) continue;
+
+            DbBalance target = await LoadDefaultBalanceForUpdate(BalanceOwnerType.App, recipient.AppId, cancellationToken);
+            ulong balanceBefore = target.Coins;
+            appsPaid++;
+            boss.Coins -= payout;
+            target.Coins += payout;
+            totalDistributed += payout;
+            paid.Add(new AppBalanceChange(recipient.AppId, payout, balanceBefore, target.Coins));
+
+            db.Transactions.Add(new DbTransaction {
+                Id = Guid.NewGuid().ToString(),
+                FromBalanceId = boss.Id,
+                ToBalanceId = target.Id,
+                Amount = payout,
+                Description = $"Periodic tax payout (cycle #{cycle.Id})",
+                DateCreated = createdAt
+            });
+        }
+
+        cycle.Distributed = totalDistributed;
+        cycle.AppsPaid = appsPaid;
+        cycle.BossEndingBalance = boss.Coins;
+        cycle.Phase = (int)TaxCyclePhase.Finished;
+        cycle.Status = (int)TaxCycleStatus.Completed;
+        cycle.CompletedAt = DateTime.UtcNow;
+        cycle.LeaseOwner = InstanceId;
+        cycle.LeaseRenewedUtc = DateTime.UtcNow;
+
+        // Notifications are queued here, in this transaction, for two reasons: the cycle is now
+        // final so its numbers cannot change under a resume, and an event committed alongside the
+        // mutation can never describe a run that later rolled back. Nothing is sent from here —
+        // an HTTP call under these row locks would let an app's endpoint stall the economy.
+        await EnqueueCycleWebhooks(cycle, paid, cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
+        if (tx != null) await tx.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>What one tax cycle did to one app's balance.</summary>
+    private sealed record AppBalanceChange(string AppId, ulong Amount, ulong BalanceBefore, ulong BalanceAfter);
+
+    /// <summary>
+    /// Adds one outbox row per subscribed app for the two directions tax moves coins: apps that
+    /// were charged (<c>tax.collected</c>) and official apps that were paid (<c>tax.payout</c>).
+    /// The two reach disjoint audiences — official apps are exempt from collection and are the only
+    /// recipients of a payout — so an app subscribing to both still only ever receives one of them.
+    /// <para>
+    /// Work is bounded by the number of <i>subscribed</i> apps, not by the number of accounts
+    /// taxed: the subscription list is read first and the per-app charge detail is loaded only for
+    /// apps on it.
+    /// </para>
+    /// </summary>
+    private async Task EnqueueCycleWebhooks(DbTaxCycle cycle, List<AppBalanceChange> paid, CancellationToken cancellationToken) {
+        string[] subscribedAppIds = await db.AppWebhooks.AsNoTracking()
+            .Where(w => w.Enabled)
+            .Select(w => w.AppId)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+        if (subscribedAppIds.Length == 0) return;
+
+        HashSet<string> subscribed = subscribedAppIds.ToHashSet(StringComparer.Ordinal);
+        List<WebhookEvent> events = [];
+
+        List<DbTaxAppCharge> charges = await db.TaxAppCharges.AsNoTracking()
+            .Where(c => c.CycleId == cycle.Id && subscribedAppIds.Contains(c.AppId))
+            .ToListAsync(cancellationToken);
+
+        // An app may own several balances, so the event reports the app's total rather than one
+        // row's — otherwise a multi-balance app would see an amount that does not reconcile.
+        foreach (IGrouping<string, DbTaxAppCharge> group in charges.GroupBy(c => c.AppId, StringComparer.Ordinal)) {
+            ulong amount = 0, before = 0, after = 0;
+            foreach (DbTaxAppCharge charge in group) {
+                amount += charge.Amount;
+                before += charge.BalanceBefore;
+                after += charge.BalanceAfter;
+            }
+            if (amount == 0) continue;
+            events.Add(BuildTaxEvent(cycle, WebhookEventTypes.TaxCollected,
+                new AppBalanceChange(group.Key, amount, before, after)));
+        }
+
+        foreach (AppBalanceChange payout in paid) {
+            if (!subscribed.Contains(payout.AppId)) continue;
+            events.Add(BuildTaxEvent(cycle, WebhookEventTypes.TaxPayout, payout));
+        }
+
+        if (events.Count == 0) return;
+
+        List<DbWebhookDelivery> queued = await WebhookOutbox.Enqueue(db, events, cancellationToken);
+        if (queued.Count > 0) {
+            logger.LogInformation("Tax cycle #{CycleId} queued {Count} webhook delivery/deliveries across {Apps} app(s)",
+                cycle.Id, queued.Count, events.Select(e => e.AppId).Distinct().Count());
+        }
+    }
+
+    private static WebhookEvent BuildTaxEvent(DbTaxCycle cycle, string eventType, AppBalanceChange change) => new() {
+        AppId = change.AppId,
+        EventType = eventType,
+        CycleId = cycle.Id,
+        // A cycle settles at most once, so (event type, cycle) is the natural identity of the
+        // occurrence — and what makes a re-entered emit point a no-op rather than a duplicate send.
+        DedupeSuffix = cycle.Id.ToString(CultureInfo.InvariantCulture),
+        Payload = new WebhookEventPayload {
+            CycleId = cycle.Id,
+            ScheduledForUtc = cycle.ScheduledForUtc,
+            Manual = cycle.IsManual,
+            RatePercent = PercentToString(cycle.RatePercent),
+            Amount = change.Amount.ToString(CultureInfo.InvariantCulture),
+            BalanceBefore = change.BalanceBefore.ToString(CultureInfo.InvariantCulture),
+            BalanceAfter = change.BalanceAfter.ToString(CultureInfo.InvariantCulture),
+            OccurredAt = cycle.CompletedAt ?? DateTime.UtcNow
+        }
+    };
 
     private static ulong ComputeDueFromPercent(ulong balance, decimal ratePercent) {
         if (balance == 0 || ratePercent <= 0) return 0;
@@ -430,95 +779,6 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         if (dueDec <= 0) return 0;
         if (dueDec >= balance) return balance;
         return (ulong)dueDec;
-    }
-
-    private static (ulong collected, int usersTaxed) PreviewCollection(IReadOnlyCollection<DbBalance> userBalances, decimal ratePercent) {
-        if (ratePercent <= 0) return (0, 0);
-        decimal clamped = ClampPercent(ratePercent);
-        ulong totalCollected = 0;
-        int usersTaxed = 0;
-        foreach (DbBalance userBalance in userBalances) {
-            ulong due = ComputeDueFromPercent(userBalance.Coins, clamped);
-            if (due == 0) continue;
-            usersTaxed++;
-            totalCollected += due;
-        }
-        return (totalCollected, usersTaxed);
-    }
-
-    private static (ulong collected, int usersTaxed) PreviewCollection(IReadOnlyCollection<ulong> userBalances, decimal ratePercent) {
-        if (ratePercent <= 0) return (0, 0);
-        decimal clamped = ClampPercent(ratePercent);
-        ulong totalCollected = 0;
-        int usersTaxed = 0;
-        foreach (ulong userBalance in userBalances) {
-            ulong due = ComputeDueFromPercent(userBalance, clamped);
-            if (due == 0) continue;
-            usersTaxed++;
-            totalCollected += due;
-        }
-        return (totalCollected, usersTaxed);
-    }
-
-    private static (ulong distributed, int appsPaid) PreviewDistribution(ulong bossAvailable, IReadOnlyCollection<OfficialRecipient> recipients) {
-        Dictionary<string, ulong> payouts = ComputeEvenPayouts(recipients, bossAvailable);
-        ulong totalDistributed = 0;
-        int appsPaid = 0;
-        foreach (ulong payout in payouts.Values) {
-            if (payout == 0) continue;
-            appsPaid++;
-            totalDistributed += payout;
-        }
-        return (totalDistributed, appsPaid);
-    }
-
-    private (ulong collected, int usersTaxed) CollectTaxes(IReadOnlyCollection<DbBalance> userBalances, DbBalance bossBalance, decimal ratePercent) {
-        if (ratePercent <= 0) return (0, 0);
-        decimal clamped = ClampPercent(ratePercent);
-        ulong totalCollected = 0;
-        int usersTaxed = 0;
-        DateTime createdAt = DateTime.UtcNow;
-        foreach (DbBalance userBalance in userBalances.OrderBy(b => b.OwnerId)) {
-            ulong due = ComputeDueFromPercent(userBalance.Coins, clamped);
-            if (due == 0) continue;
-            usersTaxed++;
-            userBalance.Coins -= due;
-            bossBalance.Coins += due;
-            totalCollected += due;
-            db.Transactions.Add(new DbTransaction {
-                Id = Guid.NewGuid().ToString(),
-                FromBalanceId = userBalance.Id,
-                ToBalanceId = bossBalance.Id,
-                Amount = due,
-                Description = "Periodic tax collection",
-                DateCreated = createdAt
-            });
-        }
-        return (totalCollected, usersTaxed);
-    }
-
-    private (ulong distributed, int appsPaid) DistributeBossFunds(DbBalance bossBalance, IReadOnlyCollection<OfficialRecipient> recipients) {
-        Dictionary<string, ulong> payouts = ComputeEvenPayouts(recipients, bossBalance.Coins);
-        ulong totalDistributed = 0;
-        int appsPaid = 0;
-        DateTime createdAt = DateTime.UtcNow;
-
-        foreach (OfficialRecipient recipient in recipients.OrderBy(r => r.AppId)) {
-            if (!payouts.TryGetValue(recipient.AppId, out ulong payout) || payout == 0) continue;
-            appsPaid++;
-            bossBalance.Coins -= payout;
-            recipient.Balance.Coins += payout;
-            totalDistributed += payout;
-            db.Transactions.Add(new DbTransaction {
-                Id = Guid.NewGuid().ToString(),
-                FromBalanceId = bossBalance.Id,
-                ToBalanceId = recipient.Balance.Id,
-                Amount = payout,
-                Description = "Periodic tax payout",
-                DateCreated = createdAt
-            });
-        }
-        return (totalDistributed, appsPaid);
     }
 
     private static Dictionary<string, ulong> ComputeEvenPayouts(IReadOnlyCollection<OfficialRecipient> recipients, ulong available) {
@@ -554,43 +814,97 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         return payouts;
     }
 
-    private async Task<List<DbBalance>> LoadDefaultBalances(BalanceOwnerType ownerType, IReadOnlyCollection<string>? ownerIds, CancellationToken cancellationToken) {
-        int type = (int)ownerType;
-        IQueryable<DbBalance> query = db.Balances.Where(b => b.OwnerType == type);
-        if (ownerIds is { Count: > 0 }) {
-            query = query.Where(b => ownerIds.Contains(b.OwnerId));
+    // ---------------------------------------------------------------------------------------
+    // Data access
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds parameterised raw SQL. Balance ids and app ids are interpolated as parameters rather
+    /// than literals so the exemption list can never inject.
+    /// </summary>
+    private sealed class SqlArgs {
+        private readonly List<object> _values = [];
+        public string Add(object value) {
+            _values.Add(value);
+            return "{" + (_values.Count - 1) + "}";
         }
-
-        List<DbBalance> rows = await query
-            .OrderBy(b => b.OwnerId)
-            .ThenBy(b => b.DateCreated)
-            .ToListAsync(cancellationToken);
-
-        List<DbBalance> defaults = rows
-            .GroupBy(b => b.OwnerId)
-            .Select(g => g.First())
-            .ToList();
-
-        if (ownerIds is { Count: > 0 }) {
-            HashSet<string> have = defaults.Select(b => b.OwnerId).ToHashSet();
-            foreach (string ownerId in ownerIds.Where(id => !have.Contains(id))) {
-                defaults.Add(await GetOrCreateDefaultBalance(ownerType, ownerId, cancellationToken));
-            }
-        }
-
-        return defaults;
+        public object[] ToArray() => _values.ToArray();
     }
 
-    private async Task<DbBalance> GetOrCreateDefaultBalance(BalanceOwnerType ownerType, string ownerId, CancellationToken cancellationToken) {
-        int type = (int)ownerType;
-        DbBalance? existing = await db.Balances
-            .OrderBy(b => b.DateCreated)
-            .FirstOrDefaultAsync(b => b.OwnerType == type && b.OwnerId == ownerId, cancellationToken);
-        if (existing != null) return existing;
+    /// <summary>
+    /// Every balance is taxable except those owned by an official app. Official apps are the
+    /// recipients of tax, and BOSS is the collector, so taxing them would just churn coins.
+    /// </summary>
+    private static string TaxableWhere(SqlArgs args, IReadOnlyList<string> exemptAppIds) {
+        if (exemptAppIds.Count == 0) return "1 = 1";
+        string list = string.Join(", ", exemptAppIds.Select(id => args.Add(id)));
+        return $"NOT (`OwnerType` = {args.Add((int)BalanceOwnerType.App)} AND `OwnerId` IN ({list}))";
+    }
+
+    /// <summary>Coins owed at the given rate, mirroring <see cref="ComputeDueFromPercent"/>'s away-from-zero rounding and balance cap.</summary>
+    private static string DueExpression(SqlArgs args, decimal ratePercent) =>
+        $"LEAST(ROUND(`Coins` * CAST({args.Add(ratePercent / 100m)} AS DECIMAL(30,20))), `Coins`)";
+
+    private async Task<decimal> SumTaxableCoins(IReadOnlyList<string> exempt, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string where = TaxableWhere(args, exempt);
+        return await QueryDecimal(
+            $"SELECT CAST(COALESCE(SUM(`Coins`), 0) AS DECIMAL(65,0)) AS `Value` FROM `Balances` WHERE {where}",
+            args.ToArray(), cancellationToken);
+    }
+
+    private async Task<long> CountTaxableBalances(IReadOnlyList<string> exempt, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string where = TaxableWhere(args, exempt);
+        return await QueryLong(
+            $"SELECT COUNT(*) AS `Value` FROM `Balances` WHERE {where}",
+            args.ToArray(), cancellationToken);
+    }
+
+    private async Task<decimal> SumTaxDue(IReadOnlyList<string> exempt, decimal ratePercent, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string where = TaxableWhere(args, exempt);
+        string due = DueExpression(args, ratePercent);
+        return await QueryDecimal(
+            $"SELECT CAST(COALESCE(SUM({due}), 0) AS DECIMAL(65,0)) AS `Value` FROM `Balances` WHERE {where}",
+            args.ToArray(), cancellationToken);
+    }
+
+    private async Task<long> CountTaxDuePayers(IReadOnlyList<string> exempt, decimal ratePercent, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string where = TaxableWhere(args, exempt);
+        string due = DueExpression(args, ratePercent);
+        return await QueryLong(
+            $"SELECT COUNT(*) AS `Value` FROM `Balances` WHERE {where} AND {due} >= 1",
+            args.ToArray(), cancellationToken);
+    }
+
+    private async Task<List<DbBalance>> LoadChunkForUpdate(string cursor, IReadOnlyList<string> exempt, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string cursorParam = args.Add(cursor);
+        string where = TaxableWhere(args, exempt);
+        // Ordering by the clustered primary key makes this a forward range scan, so chunk N costs
+        // the same as chunk 1 no matter how far into the table it sits.
+        string sql =
+            $"SELECT * FROM `Balances` WHERE `Id` > {cursorParam} AND {where} " +
+            $"ORDER BY `Id` LIMIT {CollectionChunkSize} FOR UPDATE";
+        return await db.Balances.FromSqlRaw(sql, args.ToArray()).ToListAsync(cancellationToken);
+    }
+
+    private async Task<DbBalance> LoadDefaultBalanceForUpdate(BalanceOwnerType ownerType, string ownerId, CancellationToken cancellationToken) {
+        SqlArgs args = new();
+        string type = args.Add((int)ownerType);
+        string owner = args.Add(ownerId);
+        string sql =
+            $"SELECT * FROM `Balances` WHERE `OwnerType` = {type} AND `OwnerId` = {owner} " +
+            "ORDER BY `DateCreated` LIMIT 1 FOR UPDATE";
+
+        List<DbBalance> rows = await db.Balances.FromSqlRaw(sql, args.ToArray()).ToListAsync(cancellationToken);
+        if (rows.Count > 0) return rows[0];
 
         DbBalance created = new() {
             Id = Guid.NewGuid().ToString(),
-            OwnerType = type,
+            OwnerType = (int)ownerType,
             OwnerId = ownerId,
             Coins = 0,
             DateCreated = DateTime.UtcNow
@@ -599,7 +913,137 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         return created;
     }
 
-    private async Task<DateTime?> GetLastRun(CancellationToken cancellationToken) {
+    /// <summary>Read-only balance lookup for planning. Never creates a row, unlike its FOR UPDATE counterpart.</summary>
+    private async Task<ulong> ReadDefaultBalanceCoins(BalanceOwnerType ownerType, string ownerId, CancellationToken cancellationToken) {
+        int type = (int)ownerType;
+        return await db.Balances.AsNoTracking()
+            .Where(b => b.OwnerType == type && b.OwnerId == ownerId)
+            .OrderBy(b => b.DateCreated)
+            .Select(b => (ulong?)b.Coins)
+            .FirstOrDefaultAsync(cancellationToken) ?? 0;
+    }
+
+    private async Task<string[]> GetExemptAppIds(string bossAppId, CancellationToken cancellationToken) {
+        if (_exemptAppIds != null) return _exemptAppIds;
+
+        string[] official = await db.Apps.AsNoTracking()
+            .Where(a => a.IsOfficial)
+            .Select(a => a.Id)
+            .ToArrayAsync(cancellationToken);
+
+        // BOSS is exempt whether or not it happens to carry the official flag.
+        _exemptAppIds = official
+            .Append(bossAppId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+        return _exemptAppIds;
+    }
+
+    private async Task<List<OfficialRecipient>> LoadRecipients(string bossAppId, CancellationToken cancellationToken) {
+        string[] officialAppIds = await db.Apps.AsNoTracking()
+            .Where(a => a.IsOfficial && a.Id != bossAppId)
+            .OrderBy(a => a.Id)
+            .Select(a => a.Id)
+            .ToArrayAsync(cancellationToken);
+        if (officialAppIds.Length == 0) return [];
+
+        int appType = (int)BalanceOwnerType.App;
+        var balanceRows = await db.Balances.AsNoTracking()
+            .Where(b => b.OwnerType == appType && officialAppIds.Contains(b.OwnerId))
+            .OrderBy(b => b.OwnerId)
+            .ThenBy(b => b.DateCreated)
+            .Select(b => new { b.OwnerId, b.Coins })
+            .ToListAsync(cancellationToken);
+
+        Dictionary<string, ulong> currentBalances = balanceRows
+            .GroupBy(b => b.OwnerId)
+            .ToDictionary(g => g.Key, g => g.First().Coins);
+
+        string[] targetKeys = officialAppIds.Select(AppTargetKey).ToArray();
+        Dictionary<string, string> targetValues = await db.Kvs.AsNoTracking()
+            .Where(k => targetKeys.Contains(k.Key))
+            .ToDictionaryAsync(k => k.Key, k => k.Value, cancellationToken);
+
+        List<OfficialRecipient> recipients = new(officialAppIds.Length);
+        foreach (string appId in officialAppIds) {
+            ulong target = targetValues.TryGetValue(AppTargetKey(appId), out string? raw)
+                       && ulong.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed)
+                ? parsed
+                : 0;
+            recipients.Add(new OfficialRecipient {
+                AppId = appId,
+                TargetBalance = target,
+                CurrentBalance = currentBalances.GetValueOrDefault(appId, 0UL)
+            });
+        }
+        return recipients;
+    }
+
+    private async Task<decimal> QueryDecimal(string sql, object[] args, CancellationToken cancellationToken) {
+        List<decimal?> rows = await db.Database.SqlQueryRaw<decimal?>(sql, args).ToListAsync(cancellationToken);
+        return rows.Count == 0 ? 0m : rows[0] ?? 0m;
+    }
+
+    private async Task<long> QueryLong(string sql, object[] args, CancellationToken cancellationToken) {
+        List<long?> rows = await db.Database.SqlQueryRaw<long?>(sql, args).ToListAsync(cancellationToken);
+        return rows.Count == 0 ? 0L : rows[0] ?? 0L;
+    }
+
+    private async Task<IDbContextTransaction?> BeginReadCommitted(CancellationToken cancellationToken) =>
+        db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+    // ---------------------------------------------------------------------------------------
+    // Schedule anchor + settings
+    // ---------------------------------------------------------------------------------------
+
+    private async Task RecordSkippedGap(TaxSettings settings, DateTime lastSkippedBoundary, long skippedCount, CancellationToken cancellationToken) {
+        // One row for the whole gap rather than one per boundary — a long outage would otherwise
+        // insert thousands of rows describing nothing.
+        db.TaxCycles.Add(new DbTaxCycle {
+            ScheduledForUtc = lastSkippedBoundary,
+            IsManual = false,
+            Status = (int)TaxCycleStatus.Skipped,
+            Phase = (int)TaxCyclePhase.Finished,
+            StartedAt = DateTime.UtcNow,
+            CompletedAt = DateTime.UtcNow,
+            LeaseOwner = InstanceId,
+            DynamicRate = settings.UseDynamicRate,
+            RatePercent = 0,
+            BossAppId = settings.BossAppId,
+            CursorBalanceId = "",
+            BlockedReason = Truncate(
+                $"{skippedCount} cycle(s) elapsed while the server was not running and fell outside the {MaxCatchUpCycles}-cycle catch-up window.",
+                512)
+        });
+        try {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) {
+            logger.LogInformation(ex, "Skipped-gap tax cycle for {Boundary:o} was already recorded", lastSkippedBoundary);
+        }
+        finally {
+            db.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task<TaxSettings> LoadSettings(CancellationToken cancellationToken) {
+        ulong periodHours = await GetIntegerConfig(ServerConfigCatalog.TaxPeriodHours, cancellationToken);
+        return new TaxSettings {
+            Period = periodHours == 0
+                ? TimeSpan.Zero
+                : TimeSpan.FromHours(Math.Min(periodHours, (ulong)TimeSpan.MaxValue.TotalHours)),
+            FixedRatePercent = await GetPercentConfig(ServerConfigCatalog.TaxFixedRate, cancellationToken),
+            UseDynamicRate = await GetBooleanConfig(ServerConfigCatalog.TaxUseDynamicRate, cancellationToken),
+            MaxDynamicRatePercent = await GetPercentConfig(ServerConfigCatalog.TaxMaxDynamicRate, cancellationToken),
+            BossAppId = await GetStringConfig(ServerConfigCatalog.TaxBossAppId, cancellationToken)
+        };
+    }
+
+    private async Task<DateTime?> GetAnchor(CancellationToken cancellationToken) {
         string? raw = await db.Kvs.AsNoTracking()
             .Where(k => k.Key == LastRunKey)
             .Select(k => k.Value)
@@ -613,6 +1057,12 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsed)
             ? parsed
             : null;
+    }
+
+    private async Task SetAnchor(DateTime value, CancellationToken cancellationToken) {
+        await UpsertKv(LastRunKey, value.ToString("o", CultureInfo.InvariantCulture), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        db.ChangeTracker.Clear();
     }
 
     private async Task<ulong> GetAppTarget(string appId, CancellationToken cancellationToken) {
@@ -657,6 +1107,124 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             row.Value = value;
         }
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Projection helpers
+    // ---------------------------------------------------------------------------------------
+
+    private static TaxPreview ToPreview(TaxPlan plan) => new() {
+        CanRun = plan.CanRun,
+        BlockedReason = plan.BlockedReason,
+        DynamicRate = plan.Settings.UseDynamicRate,
+        BossAppId = plan.Settings.BossAppId,
+        Rate = PercentToString(plan.RatePercent),
+        FixedRate = PercentToString(plan.Settings.FixedRatePercent),
+        MaxDynamicRate = PercentToString(plan.Settings.MaxDynamicRatePercent),
+        UsersTaxed = plan.ExpectedAccountsTaxed,
+        Collected = plan.ExpectedCollection,
+        AppsNeedingFunds = plan.AppsNeedingFunds,
+        Distributed = plan.ExpectedDistribution,
+        BossStartingBalance = plan.BossStartingBalance,
+        BossEndingBalance = plan.ExpectedBossEnding
+    };
+
+    private static TaxRunResult ToRunResult(TaxPreview preview, long? cycleId) => new() {
+        CanRun = preview.CanRun,
+        BlockedReason = preview.BlockedReason,
+        DynamicRate = preview.DynamicRate,
+        BossAppId = preview.BossAppId,
+        Rate = preview.Rate,
+        FixedRate = preview.FixedRate,
+        MaxDynamicRate = preview.MaxDynamicRate,
+        UsersTaxed = preview.UsersTaxed,
+        Collected = preview.Collected,
+        AppsNeedingFunds = preview.AppsNeedingFunds,
+        Distributed = preview.Distributed,
+        BossStartingBalance = preview.BossStartingBalance,
+        BossEndingBalance = preview.BossEndingBalance,
+        CycleId = cycleId
+    };
+
+    /// <summary>Reports what the run actually did, read back from the committed cycle row.</summary>
+    private async Task<TaxRunResult> BuildResultFromCycle(long cycleId, TaxSettings settings, CancellationToken cancellationToken) {
+        DbTaxCycle? cycle = await db.TaxCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cycleId, cancellationToken);
+        if (cycle == null) {
+            return ToRunResult(BlockedPreview(settings, "The tax cycle record could not be read back."), cycleId);
+        }
+
+        return new TaxRunResult {
+            CanRun = (TaxCycleStatus)cycle.Status is TaxCycleStatus.Completed or TaxCycleStatus.Running,
+            BlockedReason = cycle.BlockedReason,
+            DynamicRate = cycle.DynamicRate,
+            BossAppId = cycle.BossAppId,
+            Rate = PercentToString(cycle.RatePercent),
+            FixedRate = PercentToString(settings.FixedRatePercent),
+            MaxDynamicRate = PercentToString(settings.MaxDynamicRatePercent),
+            UsersTaxed = cycle.AccountsTaxed,
+            Collected = cycle.Collected,
+            AppsNeedingFunds = cycle.AppsNeedingFunds,
+            Distributed = cycle.Distributed,
+            BossStartingBalance = cycle.BossStartingBalance,
+            BossEndingBalance = cycle.BossEndingBalance,
+            CycleId = cycle.Id
+        };
+    }
+
+    private static TaxCycleRecord ToRecord(DbTaxCycle row) => new() {
+        Id = row.Id,
+        ScheduledForUtc = row.ScheduledForUtc,
+        Manual = row.IsManual,
+        Status = (TaxCycleStatus)row.Status,
+        Phase = (TaxCyclePhase)row.Phase,
+        StartedAt = row.StartedAt,
+        CompletedAt = row.CompletedAt,
+        DynamicRate = row.DynamicRate,
+        Rate = PercentToString(row.RatePercent),
+        BossAppId = row.BossAppId,
+        Collected = row.Collected,
+        AccountsTaxed = row.AccountsTaxed,
+        Distributed = row.Distributed,
+        AppsPaid = row.AppsPaid,
+        AppsNeedingFunds = row.AppsNeedingFunds,
+        BossStartingBalance = row.BossStartingBalance,
+        BossEndingBalance = row.BossEndingBalance,
+        Attempts = row.Attempts,
+        BlockedReason = row.BlockedReason
+    };
+
+    private static TaxPreview BlockedPreview(TaxSettings settings, string reason) => new() {
+        CanRun = false,
+        BlockedReason = reason,
+        DynamicRate = settings.UseDynamicRate,
+        BossAppId = settings.BossAppId,
+        Rate = "0",
+        FixedRate = PercentToString(settings.FixedRatePercent),
+        MaxDynamicRate = PercentToString(settings.MaxDynamicRatePercent)
+    };
+
+    private static TaxPlan EmptyPlan(TaxSettings settings, string reason) => new() {
+        Settings = settings,
+        BlockedReason = reason,
+        BossStartingBalance = 0,
+        RatePercent = 0,
+        ExpectedCollection = 0,
+        ExpectedAccountsTaxed = 0,
+        ExpectedDistribution = 0,
+        ExpectedBossEnding = 0,
+        AppsNeedingFunds = 0
+    };
+
+    private static decimal ClampPercent(decimal percent) =>
+        percent <= 0 ? 0 : percent >= 100 ? 100 : percent;
+
+    private static ulong ClampToUlong(decimal value, ulong max) {
+        if (value <= 0) return 0;
+        decimal ceiling = max;
+        return value >= ceiling ? max : (ulong)value;
+    }
+
+    private static string? Truncate(string? value, int maxLength) =>
+        value == null || value.Length <= maxLength ? value : value[..maxLength];
 
     private static string PercentToString(decimal percent) =>
         percent.ToString("0.########", CultureInfo.InvariantCulture);
