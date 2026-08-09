@@ -91,7 +91,10 @@ public class DbTaxCycle {
 
     public int AppsPaid { get; set; }
 
-    /// <summary>Official apps below their target balance when the run was planned.</summary>
+    /// <summary>
+    /// Official apps the run expected to be below target once collection finished — including any
+    /// pushed under it by this cycle's own tax, since official apps are taxed like everyone else.
+    /// </summary>
     public int AppsNeedingFunds { get; set; }
 
     /// <summary>

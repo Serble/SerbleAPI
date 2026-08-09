@@ -10,8 +10,10 @@ using SerbleAPI.Models;
 namespace SerbleAPI.Services.Impl;
 
 /// <summary>
-/// Periodic wealth tax: coins are collected from every non-official balance into the BOSS app's
-/// balance, then redistributed to official apps that sit below their configured target.
+/// Periodic wealth tax: coins are collected from every balance into the BOSS app's balance, then
+/// redistributed to official apps that sit below their configured target. Official apps are taxed
+/// alongside everyone else — being a recipient of the redistribution does not exempt an app from
+/// funding it — so the only account collection skips is BOSS itself.
 ///
 /// <para><b>Scaling model.</b> A run never loads the balance table into memory. The rate is
 /// computed from SQL aggregates, then collection walks the clustered primary key in chunks of
@@ -61,9 +63,6 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
 
     private static readonly string InstanceId = $"{Environment.MachineName}:{Environment.ProcessId}";
 
-    /// <summary>Apps exempt from tax, cached for the lifetime of this (scoped) service instance.</summary>
-    private string[]? _exemptAppIds;
-
     private sealed class TaxSettings {
         public required TimeSpan Period { get; init; }
         public required decimal FixedRatePercent { get; init; }
@@ -106,6 +105,39 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
     public async Task<OfficialAppTaxTarget> GetOfficialAppTarget(string appId, CancellationToken cancellationToken = default) {
         ulong target = await GetAppTarget(appId, cancellationToken);
         return new OfficialAppTaxTarget { AppId = appId, TargetBalance = target };
+    }
+
+    public async Task<TaxScheduleInfo> GetScheduleInfo(CancellationToken cancellationToken = default) {
+        TaxSettings settings = await LoadSettings(cancellationToken);
+
+        // Whichever mode is active decides the ceiling: dynamic runs are clamped to the max
+        // dynamic rate, fixed runs charge the fixed rate exactly.
+        decimal maxRate = ClampPercent(settings.UseDynamicRate
+            ? settings.MaxDynamicRatePercent
+            : settings.FixedRatePercent);
+
+        DateTime? next = null;
+        if (settings.SchedulerEnabled) {
+            DateTime? anchor = await GetAnchor(cancellationToken);
+            // With no anchor stored yet the scheduler stamps one at the current time on its next
+            // pass, so the first boundary is a full period out rather than immediately due.
+            DateTime basis = anchor ?? DateTime.UtcNow;
+            // The period is only validated as a non-negative integer, so a large enough one puts
+            // the boundary past DateTime.MaxValue. Report "no computable boundary" rather than
+            // letting an unauthenticated read throw on a misconfiguration.
+            if (settings.Period <= DateTime.MaxValue - basis) next = basis + settings.Period;
+        }
+
+        return new TaxScheduleInfo {
+            Scheduled             = settings.SchedulerEnabled,
+            PeriodHours           = (ulong)settings.Period.TotalHours,
+            DynamicRate           = settings.UseDynamicRate,
+            MaxRatePercent        = PercentToString(maxRate),
+            FixedRatePercent      = PercentToString(ClampPercent(settings.FixedRatePercent)),
+            MaxDynamicRatePercent = PercentToString(ClampPercent(settings.MaxDynamicRatePercent)),
+            NextCycleUtc          = next,
+            MaxCatchUpCycles      = MaxCatchUpCycles
+        };
     }
 
     public async Task SetOfficialAppTarget(string appId, ulong targetBalance, CancellationToken cancellationToken = default) {
@@ -266,15 +298,14 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         ulong bossStartingBalance = await ReadDefaultBalanceCoins(BalanceOwnerType.App, settings.BossAppId, cancellationToken);
         ulong bossCapacity = ulong.MaxValue - bossStartingBalance;
 
-        string[] exempt = await GetExemptAppIds(settings.BossAppId, cancellationToken);
+        string[] exempt = GetExemptAppIds(settings.BossAppId);
         List<OfficialRecipient> recipients = await LoadRecipients(settings.BossAppId, cancellationToken);
-        int appsNeedingFunds = recipients.Count(r => r.Deficit > 0);
 
         decimal totalWealth = await SumTaxableCoins(exempt, cancellationToken);
         long taxableCount = await CountTaxableBalances(exempt, cancellationToken);
 
         decimal ratePercent = settings.UseDynamicRate
-            ? ComputeDynamicRatePercent(totalWealth, recipients, bossStartingBalance, settings.MaxDynamicRatePercent)
+            ? ComputeDynamicRatePercent(totalWealth, taxableCount, recipients, bossStartingBalance, settings.MaxDynamicRatePercent)
             : ClampPercent(settings.FixedRatePercent);
         ratePercent = CapRateToBossCapacity(ratePercent, totalWealth, taxableCount, bossCapacity);
 
@@ -286,10 +317,14 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         }
 
         ulong bossAfterCollection = bossStartingBalance + expectedCollection;
-        ulong expectedDistribution = PreviewDistribution(bossAfterCollection, recipients);
+
+        // Distribution runs after collection, so it is the taxed recipients it has to fill.
+        List<OfficialRecipient> projected = ProjectAfterCollection(recipients, ratePercent);
+        int appsNeedingFunds = projected.Count(r => r.Deficit > 0);
+        ulong expectedDistribution = PreviewDistribution(bossAfterCollection, projected);
 
         string? blockedReason = DetermineBlockedReason(
-            settings, recipients, totalWealth, bossCapacity, ratePercent, expectedCollection, expectedDistribution);
+            settings, appsNeedingFunds, totalWealth, bossCapacity, ratePercent, expectedCollection, expectedDistribution);
 
         return new TaxPlan {
             Settings = settings,
@@ -306,7 +341,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
 
     private static string? DetermineBlockedReason(
         TaxSettings settings,
-        IReadOnlyCollection<OfficialRecipient> recipients,
+        int appsNeedingFunds,
         decimal totalTaxableWealth,
         ulong bossCapacity,
         decimal ratePercent,
@@ -318,7 +353,6 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         }
         if (expectedCollection > 0 || expectedDistribution > 0) return null;
 
-        int appsNeedingFunds = recipients.Count(r => r.Deficit > 0);
         bool anyCoinsToTax = totalTaxableWealth > 0;
 
         if (settings.UseDynamicRate) {
@@ -346,21 +380,87 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         return "With the current balances and settings, a tax run would not collect or distribute any coins after rounding.";
     }
 
+    /// <summary>
+    /// The rate that leaves BOSS holding enough to bring every official app up to its target in this
+    /// same cycle's distribution phase.
+    ///
+    /// <para>The obvious form — <c>deficit / wealth</c> — under-collects, because official apps are
+    /// taxed too: charging them widens the very deficits the run exists to close, and an app sitting
+    /// exactly on its target is pushed below it. Both sides of the equation therefore move with the
+    /// rate, and the run has to out-collect its own damage:
+    /// <c>boss + r·wealth = Σ max(0, target − balance·(1 − r))</c>.</para>
+    ///
+    /// <para>That right-hand side is piecewise linear, not linear — each app joins it at whatever
+    /// rate first pushes it under target — so it is solved by iterating rather than in one step:
+    /// solve for the apps currently short, see who the resulting rate newly pushes short, solve
+    /// again. Each pass either adds an app or reproduces the previous rate, so this settles in at
+    /// most one pass per recipient and lands on the <i>smallest</i> rate that covers everyone.</para>
+    ///
+    /// <para>The rate is then asked for slightly more than the arithmetic needs, because charges are
+    /// rounded per balance and enough of them can round down to leave the payout a few coins short
+    /// of target — which is exactly the "not quite fulfilled" outcome this is here to avoid. Half a
+    /// coin per balance bounds that loss, and asking for it costs nothing over time: an over-collection
+    /// lands in BOSS, and BOSS's balance is subtracted from what the next cycle needs to collect.</para>
+    /// </summary>
     private static decimal ComputeDynamicRatePercent(
-        decimal totalUserWealth,
+        decimal totalTaxableWealth,
+        long taxableBalanceCount,
         IReadOnlyCollection<OfficialRecipient> recipients,
         ulong bossStartBalance,
         decimal maxDynamicRatePercent) {
 
-        if (maxDynamicRatePercent <= 0 || totalUserWealth <= 0) return 0;
+        if (maxDynamicRatePercent <= 0 || totalTaxableWealth <= 0) return 0;
 
-        decimal totalDeficit = recipients.Sum(r => (decimal)r.Deficit);
-        if (totalDeficit <= bossStartBalance) return 0;
+        decimal roundingAllowance = (taxableBalanceCount + 1) / 2m;
+        decimal rate = 0;
+        for (int pass = 0; pass <= recipients.Count; pass++) {
+            // Σ(target − balance) and Σ(balance) over the apps this rate leaves short. The second is
+            // the run's own cost: every coin taken from a recipient comes straight back to it in the
+            // payout, so it funds nothing and has to be taxed for twice over.
+            decimal shortfall = 0;
+            decimal recipientWealth = 0;
+            foreach (OfficialRecipient recipient in recipients) {
+                ulong afterTax = recipient.CurrentBalance - ComputeDueFromPercent(recipient.CurrentBalance, rate);
+                if (recipient.TargetBalance <= afterTax) continue;
+                shortfall += (decimal)recipient.TargetBalance - recipient.CurrentBalance;
+                recipientWealth += recipient.CurrentBalance;
+            }
 
-        decimal neededCollection = totalDeficit - bossStartBalance;
-        decimal computedPercent = neededCollection / totalUserWealth * 100m;
-        return ClampPercent(computedPercent > maxDynamicRatePercent ? maxDynamicRatePercent : computedPercent);
+            decimal needed = shortfall - bossStartBalance;
+            // Nobody is left short that BOSS cannot already cover, so this rate is the answer — on
+            // the first pass that means no tax at all.
+            if (needed <= 0) return ClampPercent(rate);
+            needed += roundingAllowance;
+
+            decimal fundableWealth = totalTaxableWealth - recipientWealth;
+            // The recipients are the entire taxable economy, so taxing harder only churns their own
+            // coins and never closes the gap. Charge the ceiling and let distribution get as close
+            // as it can.
+            if (fundableWealth <= 0) return ClampPercent(maxDynamicRatePercent);
+
+            decimal nextRate = needed / fundableWealth * 100m;
+            if (nextRate >= maxDynamicRatePercent) return ClampPercent(maxDynamicRatePercent);
+            // The rate only ever climbs, so this means the last pass added nobody new: converged.
+            if (nextRate <= rate) return ClampPercent(rate);
+            rate = nextRate;
+        }
+
+        return ClampPercent(rate);
     }
+
+    /// <summary>
+    /// The recipients as the distribution phase will actually find them — each balance already
+    /// reduced by what collection is about to take from it. Planning against their pre-collection
+    /// balances would understate what the payout has to cover, and would miss apps that only fall
+    /// under target because of this cycle's own tax.
+    /// </summary>
+    private static List<OfficialRecipient> ProjectAfterCollection(
+        IReadOnlyCollection<OfficialRecipient> recipients, decimal ratePercent) =>
+        recipients.Select(r => new OfficialRecipient {
+            AppId = r.AppId,
+            TargetBalance = r.TargetBalance,
+            CurrentBalance = r.CurrentBalance - ComputeDueFromPercent(r.CurrentBalance, ratePercent)
+        }).ToList();
 
     /// <summary>
     /// Lowers the rate if collecting it would overflow the BOSS balance. Per-balance rounding can
@@ -563,7 +663,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
         await using IDbContextTransaction? tx = await BeginReadCommitted(cancellationToken);
 
         DbTaxCycle cycle = await db.TaxCycles.FirstAsync(c => c.Id == cycleId, cancellationToken);
-        string[] exempt = await GetExemptAppIds(cycle.BossAppId, cancellationToken);
+        string[] exempt = GetExemptAppIds(cycle.BossAppId);
 
         // BOSS is locked before the chunk, matching the order Distribute uses. Taking the two in a
         // consistent order across both phases removes one class of deadlock against each other and
@@ -702,8 +802,9 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
     /// <summary>
     /// Adds one outbox row per subscribed app for the two directions tax moves coins: apps that
     /// were charged (<c>tax.collected</c>) and official apps that were paid (<c>tax.payout</c>).
-    /// The two reach disjoint audiences — official apps are exempt from collection and are the only
-    /// recipients of a payout — so an app subscribing to both still only ever receives one of them.
+    /// An official app below its target is on both sides of one cycle — it is taxed like everyone
+    /// else and then refilled — so it legitimately receives both events. They stay distinct rows
+    /// because the outbox dedupe key is (event type, cycle), not the cycle alone.
     /// <para>
     /// Work is bounded by the number of <i>subscribed</i> apps, not by the number of accounts
     /// taxed: the subscription list is read first and the per-app charge detail is loaded only for
@@ -832,8 +933,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
     }
 
     /// <summary>
-    /// Every balance is taxable except those owned by an official app. Official apps are the
-    /// recipients of tax, and BOSS is the collector, so taxing them would just churn coins.
+    /// Every balance is taxable except those owned by BOSS, which is the account collecting the tax.
     /// </summary>
     private static string TaxableWhere(SqlArgs args, IReadOnlyList<string> exemptAppIds) {
         if (exemptAppIds.Count == 0) return "1 = 1";
@@ -923,23 +1023,14 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             .FirstOrDefaultAsync(cancellationToken) ?? 0;
     }
 
-    private async Task<string[]> GetExemptAppIds(string bossAppId, CancellationToken cancellationToken) {
-        if (_exemptAppIds != null) return _exemptAppIds;
-
-        string[] official = await db.Apps.AsNoTracking()
-            .Where(a => a.IsOfficial)
-            .Select(a => a.Id)
-            .ToArrayAsync(cancellationToken);
-
-        // BOSS is exempt whether or not it happens to carry the official flag.
-        _exemptAppIds = official
-            .Append(bossAppId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct()
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToArray();
-        return _exemptAppIds;
-    }
+    /// <summary>
+    /// Apps whose balances collection skips. Only BOSS: it is the account tax is collected <i>into</i>,
+    /// so charging it would move coins from one of its balances to another and inflate the collected
+    /// total with coins it already held. Official apps are not exempt — they pay the same rate as
+    /// everyone else and get their funding back through the distribution phase.
+    /// </summary>
+    private static string[] GetExemptAppIds(string bossAppId) =>
+        string.IsNullOrWhiteSpace(bossAppId) ? [] : [bossAppId];
 
     private async Task<List<OfficialRecipient>> LoadRecipients(string bossAppId, CancellationToken cancellationToken) {
         string[] officialAppIds = await db.Apps.AsNoTracking()

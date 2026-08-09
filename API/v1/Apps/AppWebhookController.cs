@@ -136,9 +136,9 @@ public class AppWebhookController(
     // ---------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The event types that can actually reach this app, so an integration can render them.
-    /// Official apps see <c>tax.payout</c> and non-official ones see <c>tax.collected</c>: the two
-    /// have disjoint audiences, and listing both would advertise an event that can never fire here.
+    /// The event types that can actually reach this app, so an integration can render them. Every
+    /// app sees <c>tax.collected</c>; official apps additionally see <c>tax.payout</c>, which can
+    /// never fire for anyone else.
     /// </summary>
     [HttpGet("event-types")]
     public async Task<IActionResult> GetEventTypes() {

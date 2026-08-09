@@ -11,8 +11,8 @@ namespace SerbleAPI.Data.Schemas;
 /// </summary>
 public static class WebhookEventTypes {
     /// <summary>
-    /// The app's own balance was charged by a tax cycle. Only ever sent to non-official apps:
-    /// official apps are exempt from collection.
+    /// The app's own balance was charged by a tax cycle. Can reach any app: official apps are taxed
+    /// on the same terms as everyone else.
     /// </summary>
     public const string TaxCollected = "tax.collected";
 
@@ -36,9 +36,10 @@ public static class WebhookEventTypes {
         eventType != null && Subscribable.Contains(eventType, StringComparer.Ordinal);
 
     /// <summary>
-    /// The slugs that can actually reach one app. The two tax events have disjoint audiences —
-    /// official apps are exempt from collection and are the only recipients of payouts — so
-    /// offering both to every app would advertise an event that can never fire for it.
+    /// The slugs that can actually reach one app. Every app is taxed, so <see cref="TaxCollected"/>
+    /// is always on offer; <see cref="TaxPayout"/> is added only for official apps, since they are
+    /// the sole recipients of a distribution and advertising it to anyone else would name an event
+    /// that can never fire.
     /// <para>
     /// This narrows what is <i>advertised</i>, not what is accepted: subscribing to the other slug
     /// stays legal, so an app that is later promoted or demoted keeps working without a round trip
@@ -46,7 +47,7 @@ public static class WebhookEventTypes {
     /// </para>
     /// </summary>
     public static IReadOnlyList<string> ForApp(bool isOfficial) =>
-        isOfficial ? [TaxPayout] : [TaxCollected];
+        isOfficial ? [TaxCollected, TaxPayout] : [TaxCollected];
 
     /// <summary>Splits a stored subscription list into its slugs, dropping blanks and duplicates.</summary>
     public static string[] Parse(string? stored) =>

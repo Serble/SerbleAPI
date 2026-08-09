@@ -46,9 +46,8 @@ public class AppOwnerWebhookController(
     }
 
     /// <summary>
-    /// The event types that can actually reach this app. Official apps see <c>tax.payout</c> and
-    /// non-official ones see <c>tax.collected</c> — offering both would advertise an event the app
-    /// can never receive.
+    /// The event types that can actually reach this app. Every app sees <c>tax.collected</c>;
+    /// official apps additionally see <c>tax.payout</c>, which no other app can ever receive.
     /// </summary>
     [HttpGet("event-types")]
     public async Task<IActionResult> GetEventTypes(string appid) {
