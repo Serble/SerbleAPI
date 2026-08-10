@@ -32,7 +32,7 @@ public class OAuthApp {
 
     /// <summary>Every registered redirect URI (legacy single + additional OIDC ones), de-duplicated.</summary>
     public IEnumerable<string> AllRedirectUris =>
-        new[] { RedirectUri }
+        RedirectUri.Split(';')
             .Concat(AdditionalRedirectUris)
             .Where(u => !string.IsNullOrWhiteSpace(u))
             .Distinct();
