@@ -1,7 +1,20 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace SerbleAPI.Models;
 
+/// <summary>
+/// An account. <see cref="Username"/> is unique: it is an addressing key across the API (login,
+/// lookups by name, trade and transaction recipients), so the database enforces uniqueness rather
+/// than trusting the read-then-write checks in the register and account-edit paths, which two
+/// concurrent requests can both pass. The index also backs those by-name lookups.
+/// <para>
+/// Uniqueness is case- and accent-insensitive, because it follows the column's MySQL collation --
+/// the same collation the by-name lookups already compare under, so the constraint admits exactly
+/// the names those lookups would have found.
+/// </para>
+/// </summary>
+[Index(nameof(Username), IsUnique = true)]
 public class DbUser {
     [Key]
     [StringLength(64)]

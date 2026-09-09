@@ -8,7 +8,9 @@ public interface IUserRepository {
     Task<User[]> GetUsers(string[] userIds);
     Task<User?> GetUserFromName(string userName);
     Task<User?> GetUserFromStripeCustomerId(string customerId);
+    /// <summary>Creates the account. Throws <see cref="UsernameTakenException"/> if the username is taken.</summary>
     Task<User> AddUser(User user);
+    /// <summary>Saves the account. Throws <see cref="UsernameTakenException"/> if the username is taken by another account.</summary>
     Task UpdateUser(User user);
     Task SetLastLogin(string userId, DateTime lastLogin);
     Task DeleteUser(string userId);

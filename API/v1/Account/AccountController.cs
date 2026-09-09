@@ -54,6 +54,8 @@ public class AccountController(
             return BadRequest("Anti-spam check failed");
         if (requestBody.Password.Length > 256)
             return BadRequest("Password cannot be longer than 256 characters");
+        if (!UsernameRules.TryValidate(requestBody.Username, out string? usernameError))
+            return BadRequest(usernameError);
 
         if (await userRepo.GetUserFromName(requestBody.Username) != null)
             return Conflict("User already exists");
@@ -66,7 +68,15 @@ public class AccountController(
             PermLevel    = 1
         };
         newUser.WithRepos(userRepo);
-        User user = await userRepo.AddUser(newUser);
+        User user;
+        try {
+            user = await userRepo.AddUser(newUser);
+        }
+        catch (UsernameTakenException) {
+            // A concurrent registration claimed the name between the check above and the insert.
+            // The unique index caught it, so answer as the check would have.
+            return Conflict("User already exists");
+        }
         logger.LogDebug("User " + user.Username + " created");
         return Ok(await SanitisedUser.Create(user, "1", true));
     }
@@ -113,7 +123,13 @@ public class AccountController(
             }
         }
 
-        await userRepo.UpdateUser(newUser);
+        try {
+            await userRepo.UpdateUser(newUser);
+        }
+        catch (UsernameTakenException) {
+            // Someone else took the name between ApplyChanges' availability check and this save.
+            return BadRequest("Username is already taken");
+        }
         return await SanitisedUser.Create(newUser, scopes);
     }
 }

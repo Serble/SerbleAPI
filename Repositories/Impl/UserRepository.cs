@@ -73,7 +73,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             DateCreated    = user.DateCreated,
             LastLogin      = user.LastLogin
         });
-        await db.SaveChangesAsync();
+        await SaveUsernameWrite(user.Username, user.Id);
         return user;
     }
 
@@ -91,7 +91,42 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         row.TotpSecret     = user.TotpSecret;
         row.PasswordSalt   = user.PasswordSalt;
         row.LastLogin      = user.LastLogin;
-        await db.SaveChangesAsync();
+        await SaveUsernameWrite(user.Username, user.Id);
+    }
+
+    /// <summary>
+    /// Saves a pending write that carries a username, translating a rejection by the unique
+    /// username index into <see cref="UsernameTakenException"/>. The callers check availability
+    /// first, so this only fires when a concurrent request claimed the name in between.
+    /// </summary>
+    private async Task SaveUsernameWrite(string username, string userId) {
+        try {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException) {
+            // Drop the rejected values: left tracked, they would be retried by any later save on
+            // this request's context.
+            db.ChangeTracker.Clear();
+            if (await IsUsernameTaken(username, userId)) throw new UsernameTakenException(username);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Whether an account other than <paramref name="userId"/> holds the name. Asking the table is
+    /// what distinguishes a lost username race from any other failed save, and unlike matching on
+    /// the driver's error code or index name it does not depend on which provider is behind EF.
+    /// </summary>
+    private async Task<bool> IsUsernameTaken(string username, string userId) {
+        try {
+            return await db.Users.AsNoTracking()
+                .AnyAsync(u => u.Username == username && u.Id != userId);
+        }
+        catch {
+            // The database is not answering, so the save failed for some reason we cannot name.
+            // Report it as itself rather than guessing at a conflict.
+            return false;
+        }
     }
 
     public async Task SetLastLogin(string userId, DateTime lastLogin) {

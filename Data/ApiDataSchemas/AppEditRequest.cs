@@ -17,10 +17,16 @@ public class AppEditRequest {
                 if (NewValue == "") {
                     throw new ArgumentException("Name cannot be empty");
                 }
+                if (!AppRules.TryValidateName(NewValue, out string? nameError)) {
+                    throw new ArgumentException(nameError);
+                }
                 target.Name = NewValue;
                 break;
             
             case "description":
+                if (!AppRules.TryValidateDescription(NewValue, out string? descriptionError)) {
+                    throw new ArgumentException(descriptionError);
+                }
                 target.Description = NewValue;
                 break;
             

@@ -89,6 +89,10 @@ public class AppController(
     public async Task<IActionResult> CreateApp([FromBody] NewOAuthApp app) {
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
+        if (!AppRules.TryValidateName(app.Name, out string? nameError))
+            return BadRequest(nameError);
+        if (!AppRules.TryValidateDescription(app.Description, out string? descriptionError))
+            return BadRequest(descriptionError);
         await appRepo.AddOAuthApp(new OAuthApp(target.Id) {
             Description = app.Description,
             Name        = app.Name,
