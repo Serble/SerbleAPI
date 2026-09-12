@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -10,7 +11,8 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/account/mfa")]
-public class MfaController(ITokenService tokens, IUserRepository userRepo) : ControllerManager {
+[RateLimit(RateLimitTiers.Auth)]
+public class MfaController(ITokenService tokens, IUserRepository userRepo, IRateLimitService rateLimit) : ControllerManager {
 
     // Second step of the MFA login flow — no session token yet, only the first-step token from body
     [HttpPost]
@@ -33,6 +35,14 @@ public class MfaController(ITokenService tokens, IUserRepository userRepo) : Con
         // token outlives that change, so it is re-checked here rather than trusted from step one.
         if (user.IsDisabled()) {
             return Unauthorized("Account is disabled");
+        }
+
+        // What makes a six-digit code infeasible is tries per account, and the middleware only
+        // sees an address: the account is named by the token in the body.
+        RateLimitDecision attempt = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity, "mfa:" + user.Id);
+        if (!attempt.Allowed) {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(attempt.RetryAfter.TotalSeconds)).ToString();
+            return StatusCode(StatusCodes.Status429TooManyRequests, "Too many MFA attempts. Try again later.");
         }
 
         if (!await user.ValidateTotp(body.TotpCode)) {

@@ -21,6 +21,7 @@ namespace SerbleAPI.API.v1.Oidc;
 /// </summary>
 [ApiController]
 [Route("api/v1/oauth/token")]
+[RateLimit(RateLimitTiers.Auth)]
 public class OidcTokenController(
     ILogger<OidcTokenController> logger,
     IAppRepository appRepo,

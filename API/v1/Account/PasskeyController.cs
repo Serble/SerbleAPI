@@ -1,3 +1,4 @@
+using SerbleAPI.Config;
 using System.Text;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
@@ -12,6 +13,7 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/auth/passkey")]
+[RateLimit(RateLimitTiers.Write)]
 public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRepository passkeyRepo, IMemoryCache cache) : ControllerManager {
 
     // Challenge entries expire after 5 minutes — enough time to complete the
@@ -59,6 +61,7 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
         return Ok(new { success = true });
     }
 
+    [RateLimit(RateLimitTiers.Auth)]
     [HttpPost("credentialoptions")]
     [Authorize(Policy = "UserOnly")]
     public async Task<IActionResult> MakeCredentialOptions(
@@ -109,6 +112,7 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
         return Json(new { challengeId, options });
     }
 
+    [RateLimit(RateLimitTiers.Auth)]
     [HttpPost("credential")]
     [AllowAnonymous]
     public async Task<IActionResult> MakeCredential(

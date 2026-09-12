@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 
@@ -9,6 +10,7 @@ namespace SerbleAPI.API.v1.Vault;
 [ApiController]
 [Route("api/v1/vault/notes")]
 [Authorize(Policy = "Scope:Vault")]
+[RateLimit(RateLimitTiers.Write)]
 public class NotesController(IUserRepository userRepo, INoteRepository noteRepo) : ControllerManager {
 
     [HttpGet]

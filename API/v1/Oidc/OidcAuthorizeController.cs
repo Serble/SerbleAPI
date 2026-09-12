@@ -36,6 +36,8 @@ public class OidcAuthorizeController(
 
     private static string SessionKey(string id) => $"oidc:authsession:{id}";
 
+    // Anonymous, and it stores a session before the caller has proved anything.
+    [RateLimit(RateLimitTiers.Read)]
     [HttpGet]
     [AllowAnonymous]
     public async Task<IActionResult> Authorize(

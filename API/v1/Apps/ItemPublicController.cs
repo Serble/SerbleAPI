@@ -18,6 +18,7 @@ namespace SerbleAPI.API.v1.Apps;
 [Route("api/v1/items")]
 [AllowAnonymous]
 [RequireFeature(FeatureFlagCatalog.Economy)]
+[RateLimit(RateLimitTiers.Read)]
 public class ItemPublicController(
     IItemRepository itemRepo,
     IItemTransactionRepository historyRepo) : ControllerManager {

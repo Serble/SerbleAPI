@@ -24,6 +24,7 @@ namespace SerbleAPI.API.v1;
 [Route("api/v1/balance")]
 [Authorize(Policy = "EconomyAccess")]
 [RequireFeature(FeatureFlagCatalog.Economy)]
+[RateLimit(RateLimitTiers.Read)]
 public class BalanceController(
     IBalanceRepository balanceRepo,
     ITransactionRepository transactionRepo,
@@ -107,6 +108,7 @@ public class BalanceController(
     /// Zero-sum: the same amount is deducted from the sender and credited to the recipient in a
     /// single atomic operation that also writes an audit record.
     /// </summary>
+    [RateLimit(RateLimitTiers.Write)]
     [HttpPost("transfer")]
     [Authorize(Policy = "EconomyManage")]
     public async Task<ActionResult<TransferResponse>> Transfer([FromBody] TransferBody body) {

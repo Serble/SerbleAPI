@@ -17,6 +17,7 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/user")]
 [AllowAnonymous]
+[RateLimit(RateLimitTiers.Read)]
 public class UserPublicController(
     IUserRepository userRepo,
     IItemRepository itemRepo) : ControllerManager {
@@ -74,6 +75,8 @@ public class UserPublicController(
     /// ownership history) to name user owners without an N+1 of per-user lookups. Unknown ids are
     /// omitted.
     /// </summary>
+    // Up to 200 ids a call, so it is charged more than a single lookup.
+    [RateLimit(RateLimitTiers.Read, Cost = 10)]
     [HttpPost("public/batch")]
     public async Task<ActionResult<PublicUserResponse[]>> GetPublicBatch([FromBody] BatchPublicUsersBody body) {
         string[] ids = (body.Ids ?? [])

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Config;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Services;
 
@@ -6,6 +7,8 @@ namespace SerbleAPI.API.v1.Services;
 
 [ApiController]
 [Route("api/v1/recaptcha")]
+// Every call spends a verification against our Google quota.
+[RateLimit(RateLimitTiers.Costly)]
 public class ReCaptchaController(IGoogleReCaptchaService reCaptchaService) : ControllerManager {
 
     [HttpPost]

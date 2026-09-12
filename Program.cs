@@ -1,5 +1,11 @@
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+// .NET 8 has two IPNetwork types and ForwardedHeadersOptions wants the ASP.NET one.
+using ProxyNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
 using SerbleAPI.API;
 using SerbleAPI.Authentication;
 using SerbleAPI.Config;
@@ -44,6 +50,9 @@ public static class Program {
         if (stripeSettings == null || apiSettings == null || passkeySettings == null) {
             throw new Exception("Stripe or API or Passkey settings not found in configuration");
         }
+        // The class defaults to a working configuration when the section is absent.
+        ForwardedHeadersSettings forwardedHeaders =
+            builder.Configuration.GetSection("ForwardedHeaders").Get<ForwardedHeadersSettings>() ?? new ForwardedHeadersSettings();
         StripeConfiguration.ApiKey = stripeSettings.ApiKey;
         
         RawDataManager.LoadRawData();
@@ -57,6 +66,9 @@ public static class Program {
         builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
         builder.Services.AddOptions<TurnstileSettings>().Bind(builder.Configuration.GetSection("Turnstile"));
         builder.Services.AddOptions<OidcSettings>().Bind(builder.Configuration.GetSection("Oidc"));
+        builder.Services.AddOptions<RateLimitSettings>().Bind(builder.Configuration.GetSection("RateLimit"));
+        builder.Services.AddOptions<ForwardedHeadersSettings>().Bind(builder.Configuration.GetSection("ForwardedHeaders"));
+        ConfigureForwardedHeaders(builder, forwardedHeaders);
         
         builder.Services.AddControllers();
         builder.Services.AddHttpClient();
@@ -81,6 +93,9 @@ public static class Program {
                 : ServerVersion.AutoDetect(mySqlConnection);
             options.UseMySql(mySqlConnection, serverVersion);
         });
+
+        // Singleton: the counters are the state.
+        builder.Services.AddSingleton<IRateLimitService, RateLimitService>();
 
         builder.Services.AddScoped<IAntiSpamService, AntiSpamService>();
         builder.Services.AddScoped<IGoogleReCaptchaService, GoogleReCaptchaService>();
@@ -193,7 +208,33 @@ public static class Program {
         ServicesStatusService.Init();
 
         WebApplication app = builder.Build();
-            
+
+        // First in the pipeline: behind nginx or Traefik, Connection.RemoteIpAddress is the proxy
+        // until this has run, and rate limiting partitions anonymous traffic by that address.
+        if (forwardedHeaders.Enabled) {
+            app.UseForwardedHeaders();
+
+            // A trust list that does not name the real proxy fails silently: everything works and
+            // every request just looks like it came from one address.
+            ForwardedHeadersOptions effective =
+                app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value;
+            app.Logger.LogInformation(
+                "Forwarded headers on: trusting proxies [{Proxies}] and networks [{Networks}], " +
+                "forward limit {Limit}, client header {Header}",
+                string.Join(", ", effective.KnownProxies),
+                string.Join(", ", effective.KnownNetworks.Select(n => $"{n.Prefix}/{n.PrefixLength}")),
+                effective.ForwardLimit, effective.ForwardedForHeaderName);
+
+            if (forwardedHeaders.TrustAllProxies) {
+                app.Logger.LogWarning(
+                    "ForwardedHeaders.TrustAllProxies is on, so {Header} is believed from any peer. " +
+                    "This is only safe while {BindUrl} is unreachable except through the proxy; if that " +
+                    "port is exposed, clients can forge their own source address and every per-address " +
+                    "limit becomes decorative.",
+                    forwardedHeaders.ForwardedForHeaderName, apiSettings.BindUrl);
+            }
+        }
+
         if (!app.Environment.IsDevelopment()) {
             app.UseExceptionHandler("/Error");
             app.UseHsts();
@@ -210,11 +251,17 @@ public static class Program {
             db.SaveChanges();
         }
 
-        // Middleware order: cors/options -> redirects -> session -> auth -> controllers
+        // Explicit, because the rate limiter reads the matched endpoint's tier attribute.
+        app.UseRouting();
+
+        // Middleware order: cors/options -> redirects -> session -> auth -> rate limit -> controllers
         app.UseMiddleware<SerbleCorsMiddleware>();
         app.UseMiddleware<RedirectsMiddleware>();
         app.UseSession();
         app.UseAuthentication();
+        // After authentication so a request can be charged to the account and not only the
+        // address; before authorization so an over-limit caller does no handler work.
+        app.UseMiddleware<RateLimitMiddleware>();
         app.UseAuthorization();
         app.MapControllers();
         app.UseSwagger();
@@ -235,6 +282,78 @@ public static class Program {
         appTask.Wait(new TimeSpan(0, 0, 10));
         
         return 0;
+    }
+
+    /// <summary>
+    /// Translates <see cref="ForwardedHeadersSettings"/> into the framework's options.
+    /// <para>
+    /// The framework ships with loopback in the trust list, and an entry there is permission to
+    /// rewrite the client's address. Configured entries therefore replace that list rather than
+    /// extend it; naming nothing falls back to loopback.
+    /// </para>
+    /// </summary>
+    private static void ConfigureForwardedHeaders(WebApplicationBuilder builder, ForwardedHeadersSettings settings) {
+        builder.Services.Configure<ForwardedHeadersOptions>(options => {
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+
+            options.ForwardedForHeaderName = settings.ForwardedForHeaderName;
+            options.ForwardedProtoHeaderName = settings.ForwardedProtoHeaderName;
+            options.ForwardedHostHeaderName = settings.ForwardedHostHeaderName;
+            options.RequireHeaderSymmetry = settings.RequireHeaderSymmetry;
+            options.ForwardLimit = Math.Max(1, settings.ForwardLimit);
+
+            options.KnownProxies.Clear();
+            options.KnownNetworks.Clear();
+
+            if (settings.TrustAllProxies) {
+                // Empty lists mean no peer is checked. The warning is logged after build.
+                return;
+            }
+
+            if (settings.KnownProxies.Length == 0 && settings.KnownNetworks.Length == 0) {
+                // Nothing named, so assume the common case of a proxy on this host.
+                options.KnownProxies.Add(IPAddress.Loopback);
+                options.KnownProxies.Add(IPAddress.IPv6Loopback);
+                return;
+            }
+
+            foreach (string proxy in settings.KnownProxies) {
+                if (IPAddress.TryParse(proxy.Trim(), out IPAddress? address)) {
+                    options.KnownProxies.Add(address);
+                    continue;
+                }
+                Console.WriteLine($"ForwardedHeaders: ignoring unparseable KnownProxies entry '{proxy}'");
+            }
+
+            foreach (string network in settings.KnownNetworks) {
+                if (TryParseNetwork(network, out ProxyNetwork parsed)) {
+                    options.KnownNetworks.Add(parsed);
+                    continue;
+                }
+                Console.WriteLine($"ForwardedHeaders: ignoring unparseable KnownNetworks entry '{network}'");
+            }
+
+            foreach (string host in settings.AllowedHosts) {
+                options.AllowedHosts.Add(host);
+            }
+        });
+    }
+
+    /// <summary>Parses CIDR notation, e.g. <c>172.16.0.0/12</c>.</summary>
+    private static bool TryParseNetwork(string value, out ProxyNetwork network) {
+        network = default!;
+
+        string[] parts = value.Trim().Split('/');
+        if (parts.Length != 2) return false;
+        if (!IPAddress.TryParse(parts[0], out IPAddress? prefix)) return false;
+        if (!int.TryParse(parts[1], out int length)) return false;
+
+        int maxLength = prefix.AddressFamily == AddressFamily.InterNetworkV6 ? 128 : 32;
+        if (length < 0 || length > maxLength) return false;
+
+        network = new ProxyNetwork(prefix, length);
+        return true;
     }
 
 }

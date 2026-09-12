@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using SerbleAPI.Config;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -10,6 +11,7 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/oauth/token")]
+[RateLimit(RateLimitTiers.Auth)]
 public class OAuthTokenController(
     ILogger<OAuthTokenController> logger,
     ITokenService tokens,

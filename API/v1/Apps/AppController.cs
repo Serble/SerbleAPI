@@ -22,6 +22,7 @@ public class AppController(
     IItemRepository itemRepo) : ControllerManager {
 
     // Public endpoint — no auth required
+    [RateLimit(RateLimitTiers.Read)]
     [HttpGet("{appid}/public")]
     [AllowAnonymous]
     public async Task<IActionResult> GetPublicInfo(string appid) {
@@ -39,6 +40,8 @@ public class AppController(
     /// inventory view) that need the creating-app details for a list of items without an N+1 of
     /// <see cref="GetPublicInfo"/> calls. Unknown ids are simply omitted from the result.
     /// </summary>
+    // Up to 200 ids a call, so it is charged more than a single lookup.
+    [RateLimit(RateLimitTiers.Read, Cost = 10)]
     [HttpPost("public/batch")]
     [AllowAnonymous]
     public async Task<IActionResult> GetPublicInfoBatch([FromBody] BatchPublicAppsBody body) {
@@ -84,6 +87,7 @@ public class AppController(
         return Ok();
     }
 
+    [RateLimit(RateLimitTiers.Write)]
     [HttpPost]
     [Authorize(Policy = "Scope:ManageApps")]
     public async Task<IActionResult> CreateApp([FromBody] NewOAuthApp app) {

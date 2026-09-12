@@ -18,6 +18,7 @@ namespace SerbleAPI.API.v1.Account;
 [Route("api/v1/trades")]
 [Authorize(Policy = "UserOnly")]
 [RequireFeature(FeatureFlagCatalog.Economy)]
+[RateLimit(RateLimitTiers.Write)]
 public class UserTradeController(
     ILogger<UserTradeController> logger,
     IUserTradeRepository tradeRepo,

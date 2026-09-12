@@ -28,6 +28,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/app/{appid}/webhooks")]
 [Authorize(Policy = "Scope:ManageApps")]
+[RateLimit(RateLimitTiers.Write)]
 public class AppOwnerWebhookController(
     IAppRepository appRepo,
     IUserRepository userRepo,
@@ -161,6 +162,8 @@ public class AppOwnerWebhookController(
     /// Queues a <c>webhook.test</c> event so an integration can be verified end to end without
     /// waiting for a tax cycle.
     /// </summary>
+    // Queues an outbound request to a URL the caller chose.
+    [RateLimit(RateLimitTiers.Costly)]
     [HttpPost("{webhookId}/test")]
     public async Task<IActionResult> Test(string appid, string webhookId) {
         (OAuthApp? app, ActionResult? error) = await GetOwnedApp(appid);

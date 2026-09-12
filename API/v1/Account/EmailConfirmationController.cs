@@ -10,6 +10,7 @@ namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/emailconfirm")]
+[RateLimit(RateLimitTiers.Auth)]
 public class EmailConfirmationController(IOptions<ApiSettings> apiSettings, ITokenService tokens, IUserRepository users, IRewardTaskService rewardTasks) : ControllerManager {
 
     [HttpGet]

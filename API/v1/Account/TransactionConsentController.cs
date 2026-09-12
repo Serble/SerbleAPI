@@ -20,6 +20,7 @@ namespace SerbleAPI.API.v1.Account;
 [Route("api/v1/transactions/consent")]
 [Authorize(Policy = "UserOnly")]
 [RequireFeature(FeatureFlagCatalog.Economy)]
+[RateLimit(RateLimitTiers.Write)]
 public class TransactionConsentController(
     ILogger<TransactionConsentController> logger,
     ITransactionProposalRepository proposalRepo,

@@ -15,6 +15,8 @@ namespace SerbleAPI.API.v1.Payments;
 
 [Route("api/v1/payments")]
 [Controller]
+// Each call opens a Stripe session, and two of these routes are anonymous.
+[RateLimit(RateLimitTiers.Costly)]
 public class CreateCheckoutController(
     IOptions<ApiSettings> apiSettings,
     IUserRepository userRepo,

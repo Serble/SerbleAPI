@@ -1,3 +1,4 @@
+using SerbleAPI.Config;
 using System.Text;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
@@ -15,6 +16,7 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/auth")]
 [AllowAnonymous]
+[RateLimit(RateLimitTiers.Auth)]
 public class AuthController(
     IFido2 fido,
     ILogger<AuthController> logger,

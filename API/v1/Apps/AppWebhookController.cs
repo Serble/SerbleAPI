@@ -25,6 +25,7 @@ namespace SerbleAPI.API.v1.Apps;
 [ApiController]
 [Route("api/v1/app/me/webhooks")]
 [Authorize(Policy = "AppOnly")]
+[RateLimit(RateLimitTiers.Write)]
 public class AppWebhookController(
     IAppWebhookRepository webhookRepo,
     IAppRepository appRepo,
@@ -250,6 +251,8 @@ public class AppWebhookController(
     /// end to end without waiting for a tax cycle. Delivered regardless of what the subscription
     /// subscribes to.
     /// </summary>
+    // Queues an outbound request to a URL the caller chose.
+    [RateLimit(RateLimitTiers.Costly)]
     [HttpPost("{webhookId}/test")]
     public async Task<IActionResult> Test(string webhookId) {
         string? appId = HttpContext.User.GetAppId();
