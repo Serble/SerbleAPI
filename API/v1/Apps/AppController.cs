@@ -93,6 +93,8 @@ public class AppController(
             return BadRequest(nameError);
         if (!AppRules.TryValidateDescription(app.Description, out string? descriptionError))
             return BadRequest(descriptionError);
+        if (!RedirectUriRules.TryValidateField(app.RedirectUri, out string? redirectUriError))
+            return BadRequest(redirectUriError);
         await appRepo.AddOAuthApp(new OAuthApp(target.Id) {
             Description = app.Description,
             Name        = app.Name,
@@ -101,22 +103,29 @@ public class AppController(
         return Ok();
     }
 
+    /// <summary>
+    /// Applies a list of field edits to an app the caller owns.
+    /// <para>
+    /// Ownership is established before anything is read, not after: without that check any caller
+    /// holding this scope could edit any app in the database, including writing its redirect
+    /// target. The response is <see cref="OwnedOAuthApp"/> rather than the entity, so the call
+    /// cannot be used as a way to read the client secret either.
+    /// </para>
+    /// </summary>
     [HttpPatch("{appid}")]
     [Authorize(Policy = "Scope:AppsControl")]
-    public async Task<ActionResult<OAuthApp>> EditApp([FromBody] AppEditRequest[] edits, string appid) {
-        User? user = await HttpContext.User.GetUser(userRepo);
-        if (user == null) return Unauthorized();
-        OAuthApp? target = await appRepo.GetOAuthApp(appid);
-        if (target == null) return NotFound();
+    public async Task<ActionResult<OwnedOAuthApp>> EditApp([FromBody] AppEditRequest[] edits, string appid) {
+        (OAuthApp? target, ActionResult? error) = await GetOwnedApp(appid);
+        if (error != null) return error;
 
-        OAuthApp newApp = target;
+        OAuthApp newApp = target!;
         foreach (AppEditRequest editRequest in edits) {
             if (!editRequest.TryApplyChanges(newApp, out OAuthApp modApp, out string applyErrorMsg))
                 return BadRequest(applyErrorMsg);
             newApp = modApp;
         }
         await appRepo.UpdateOAuthApp(newApp);
-        return newApp;
+        return new OwnedOAuthApp(newApp);
     }
 
     // -------- API keys (owner-managed) --------

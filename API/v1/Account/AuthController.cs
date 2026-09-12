@@ -44,6 +44,9 @@ public class AuthController(
         User? user = await userRepo.GetUserFromName(username);
         if (user == null) return Unauthorized();
         if (!user.CheckPassword(password)) return Unauthorized();
+        // Checked after the password so that a disabled account is not distinguishable from a wrong
+        // password by an unauthenticated caller.
+        if (user.IsDisabled()) return Unauthorized();
 
         if (user.TotpEnabled) {
             string mfaToken = tokens.GenerateFirstStepLoginToken(user.Id);
@@ -89,6 +92,11 @@ public class AuthController(
                 byte[][] updatedKeys = (creds.DevicePublicKeys ?? []).Append(res.DevicePublicKey).ToArray();
                 await passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
             }
+
+            // The assertion proves possession of the passkey, which says nothing about whether the
+            // account it belongs to is still allowed in.
+            User? owner = await userRepo.GetUser(creds.OwnerId);
+            if (owner == null || owner.IsDisabled()) return Unauthorized();
 
             string token = await GenerateLoginTokenAndRecordLogin(creds.OwnerId);
             return Ok(new { token, success = true });

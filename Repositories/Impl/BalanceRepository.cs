@@ -16,7 +16,7 @@ public class BalanceRepository(SerbleDbContext db) : IBalanceRepository {
     };
 
     public async Task<Balance> GetBalance(BalanceOwnerType ownerType, string ownerId) {
-        DbBalance? row = await FindDefault(ownerType, ownerId, tracking: false);
+        DbBalance? row = await FindDefault(ownerType, ownerId);
         if (row != null) return Map(row);
         // Transient zero balance — not persisted on read.
         return new Balance {
@@ -41,56 +41,39 @@ public class BalanceRepository(SerbleDbContext db) : IBalanceRepository {
         return rows.Select(Map).ToArray();
     }
 
-    public async Task<Balance> SetBalance(BalanceOwnerType ownerType, string ownerId, ulong coins, string? description = null) {
-        DbBalance row = await GetOrCreateDefault(ownerType, ownerId);
-        ulong before = row.Coins;
-        row.Coins = coins;
-        RecordAdjustment(row.Id, before, row.Coins, description);
-        await db.SaveChangesAsync();
-        return Map(row);
-    }
+    public Task<Balance> SetBalance(BalanceOwnerType ownerType, string ownerId, ulong coins, string? description = null) =>
+        Adjust(ownerType, ownerId, row => row.SetCoins(coins), description);
 
-    public async Task<Balance> AddCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null) {
-        DbBalance row = await GetOrCreateDefault(ownerType, ownerId);
-        ulong before = row.Coins;
-        // Saturate instead of overflowing.
-        row.Coins = amount > ulong.MaxValue - row.Coins ? ulong.MaxValue : row.Coins + amount;
-        RecordAdjustment(row.Id, before, row.Coins, description);
-        await db.SaveChangesAsync();
-        return Map(row);
-    }
+    public Task<Balance> AddCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null) =>
+        // Credit saturates rather than overflowing.
+        Adjust(ownerType, ownerId, row => row.Credit(amount), description);
 
-    public async Task<Balance> RemoveCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null) {
-        DbBalance row = await GetOrCreateDefault(ownerType, ownerId);
-        ulong before = row.Coins;
-        // Clamp at 0.
-        row.Coins = amount >= row.Coins ? 0 : row.Coins - amount;
-        RecordAdjustment(row.Id, before, row.Coins, description);
-        await db.SaveChangesAsync();
-        return Map(row);
-    }
+    public Task<Balance> RemoveCoins(BalanceOwnerType ownerType, string ownerId, ulong amount, string? description = null) =>
+        // DebitUpTo clamps at zero: this method's contract is "take what is there". A caller that
+        // must not under-charge — a fee, a price — needs a debit that can fail instead, so that the
+        // thing being paid for is not handed over for less; see IItemRepository.CreateItemWithFee.
+        Adjust(ownerType, ownerId, row => row.DebitUpTo(amount), description);
 
     /// <summary>
-    /// Records the net change to a balance as an audit transaction so that every balance
-    /// mutation is traceable. A net increase is a <em>mint</em> (no source balance,
-    /// <c>FromBalanceId == null</c>); a net decrease is a <em>burn</em> (no destination balance,
-    /// <c>ToBalanceId == null</c>). No record is written when the balance is unchanged. The row is
-    /// added to the change tracker only — it is persisted by the caller's <c>SaveChangesAsync</c>
-    /// in the same atomic save as the balance mutation.
+    /// Applies an adjustment to an owner's default balance under the same locking discipline every
+    /// other coin movement uses: the row is taken <c>FOR UPDATE</c> inside a serializable
+    /// transaction, mutated and saved before the lock is released. Without that, these methods read
+    /// a figure and write an absolute value back, so two concurrent calls both compute from the same
+    /// starting point and the second silently discards the first.
+    /// <para>
+    /// The audit record is written in the same save, so a balance never moves without one.
+    /// </para>
     /// </summary>
-    private void RecordAdjustment(string balanceId, ulong before, ulong after, string? description) {
-        if (after == before) return;
-        bool isMint = after > before;
-        ulong amount = isMint ? after - before : before - after;
-        db.Transactions.Add(new DbTransaction {
-            Id            = Guid.NewGuid().ToString(),
-            FromBalanceId = isMint ? null : balanceId,
-            ToBalanceId   = isMint ? balanceId : null,
-            Amount        = amount,
-            Description   = description,
-            DateCreated   = DateTime.UtcNow
-        });
-    }
+    private Task<Balance> Adjust(
+        BalanceOwnerType ownerType, string ownerId, Action<DbBalance> mutate, string? description) =>
+        BalanceLocking.Run(db, async () => {
+            DbBalance row = await BalanceLocking.LockDefault(db, ownerType, ownerId);
+            ulong before = row.Coins;
+            mutate(row);
+            BalanceLocking.RecordAdjustment(db, row.Id, before, row.Coins, description);
+            await db.SaveChangesAsync();
+            return Map(row);
+        }, _ => true);
 
     public Task DeleteBalancesForOwner(BalanceOwnerType ownerType, string ownerId) {
         int type = (int)ownerType;
@@ -127,24 +110,15 @@ public class BalanceRepository(SerbleDbContext db) : IBalanceRepository {
         return result;
     }
 
-    private Task<DbBalance?> FindDefault(BalanceOwnerType ownerType, string ownerId, bool tracking) {
+    /// <summary>
+    /// The owner's default (oldest) balance, or null. Read-only in both senses: it never creates a
+    /// row, and it never tracks one, so nothing loaded here can be mutated and saved outside the
+    /// lock <see cref="Adjust"/> takes.
+    /// </summary>
+    private Task<DbBalance?> FindDefault(BalanceOwnerType ownerType, string ownerId) {
         int type = (int)ownerType;
-        IQueryable<DbBalance> q = tracking ? db.Balances : db.Balances.AsNoTracking();
-        return q.OrderBy(b => b.DateCreated)
+        return db.Balances.AsNoTracking()
+            .OrderBy(b => b.DateCreated)
             .FirstOrDefaultAsync(b => b.OwnerType == type && b.OwnerId == ownerId);
-    }
-
-    private async Task<DbBalance> GetOrCreateDefault(BalanceOwnerType ownerType, string ownerId) {
-        DbBalance? row = await FindDefault(ownerType, ownerId, tracking: true);
-        if (row != null) return row;
-        row = new DbBalance {
-            Id = Guid.NewGuid().ToString(),
-            OwnerType = (int)ownerType,
-            OwnerId = ownerId,
-            Coins = 0,
-            DateCreated = DateTime.UtcNow
-        };
-        db.Balances.Add(row);
-        return row;
     }
 }

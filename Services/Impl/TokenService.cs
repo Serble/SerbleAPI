@@ -38,6 +38,29 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         }
     }
     
+    /// <summary>
+    /// How long a legacy OAuth authorization code is valid. A code is handed to a client which
+    /// immediately exchanges it, so it only has to outlive one redirect; it used to inherit the
+    /// ten-year default, which made a code found in a log or a browser history a permanent key to
+    /// the account.
+    /// </summary>
+    public static readonly TimeSpan AuthorizationCodeLifetime = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Clock tolerance applied when checking a token's <c>nbf</c> and <c>exp</c>.
+    ///
+    /// <para>The library default is five minutes, which would have quietly turned the two-minute
+    /// authorization code above into a seven-minute one. It cannot simply be set to zero, though:
+    /// <c>nbf</c> is checked as well as <c>exp</c>, so with no tolerance a token minted by one
+    /// instance is rejected as not-yet-valid by another whose clock sits a fraction behind. That
+    /// turns ordinary drift between replicas into intermittent authentication failures across every
+    /// token type, not just codes.</para>
+    ///
+    /// <para>Thirty seconds is the compromise: far inside the code's own lifetime, and comfortably
+    /// more than NTP-synchronised hosts drift apart.</para>
+    /// </summary>
+    private static readonly TimeSpan AllowedClockSkew = TimeSpan.FromSeconds(30);
+
     // Authorization Tokens
     // Claims:
     // - userid
@@ -48,7 +71,7 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
             { "scope", scopeString },
             { "type", "oauth-authorization" },
         };
-        return GenerateToken(claims);
+        return GenerateToken(claims, AuthorizationCodeLifetime);
     }
     
     public bool ValidateAuthorizationToken(string token, string appId, out string? userId, out string scopeString, out string reason) {
@@ -228,13 +251,18 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     }
 
 
-    private string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600, string? secret = null) {
+    private string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600, string? secret = null) =>
+        GenerateToken(claims, TimeSpan.FromHours(expirationInHours), secret);
+
+    private string GenerateToken(Dictionary<string, string> claims, TimeSpan lifetime, string? secret = null) {
         string mySecret = secret ?? settings.Value.Secret;
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();
         SecurityTokenDescriptor tokenDescriptor = new() {
             Subject = new ClaimsIdentity(claims.Select(c => new Claim(c.Key, c.Value)).ToArray()),
-            Expires = DateTime.Now.AddHours(expirationInHours),
+            // UtcNow, not Now: a short lifetime has to mean what it says regardless of the host's
+            // time zone.
+            Expires = DateTime.UtcNow.Add(lifetime),
             Issuer = settings.Value.Issuer,
             Audience = settings.Value.Audience,
             SigningCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature),
@@ -256,7 +284,8 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 ValidateAudience = true,
                 ValidIssuer = settings.Value.Issuer,
                 ValidAudience = settings.Value.Audience,
-                IssuerSigningKey = mySecurityKey
+                IssuerSigningKey = mySecurityKey,
+                ClockSkew = AllowedClockSkew
             }, out SecurityToken _);
         }
         catch (Exception e) {

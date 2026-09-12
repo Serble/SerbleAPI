@@ -30,3 +30,7 @@ data.json
 config.json
 Services.json
 products.json
+# Database dumps — never commit these (they contain password hashes, TOTP secrets, client secrets)
+*.sql.gz
+*.sql
+all-databases-*

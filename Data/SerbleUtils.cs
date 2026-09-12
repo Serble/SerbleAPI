@@ -4,8 +4,7 @@ using System.Text;
 namespace SerbleAPI.Data; 
 
 public static class SerbleUtils {
-    private static Random _random = new();
-    
+
     public static string Base64Encode(string plainText) =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
 
@@ -19,10 +18,28 @@ public static class SerbleUtils {
         yield return item;
     }
     
+    /// <summary>
+    /// A random alphanumeric string, drawn from a cryptographically secure generator.
+    ///
+    /// <para>This function's output feeds TOTP secrets, password salts and app API keys, so the
+    /// generator matters: the shared <see cref="Random"/> this used to call is a seeded xoshiro256**,
+    /// which means its whole future output follows from any run of observed output. App key creation
+    /// hands the caller the key in plaintext, so an unprivileged user could collect that output
+    /// directly and then predict every later salt and TOTP secret drawn from the same instance.
+    /// <see cref="RandomNumberGenerator.GetInt32(int)"/> has no recoverable state and rejects
+    /// samples that would bias the result, unlike a plain modulo of a random word.</para>
+    ///
+    /// <para>The alphabet and the length semantics are deliberately unchanged. Salts, TOTP secrets
+    /// and hashed API keys are all stored as the strings this produced, so anything already issued
+    /// keeps verifying — only newly generated values differ, and only in being unpredictable.</para>
+    /// </summary>
     public static string RandomString(int length) {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        return new string(Enumerable.Repeat(chars, length)
-            .Select(s => s[_random.Next(s.Length)]).ToArray());
+        char[] result = new char[length];
+        for (int i = 0; i < length; i++) {
+            result[i] = chars[RandomNumberGenerator.GetInt32(chars.Length)];
+        }
+        return new string(result);
     }
 
     /// <summary>

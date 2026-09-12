@@ -4,6 +4,7 @@ using SerbleAPI.Authentication;
 using SerbleAPI.Config;
 using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
+using Microsoft.Extensions.Caching.Memory;
 using SerbleAPI.Repositories;
 using SerbleAPI.Services;
 
@@ -23,7 +24,16 @@ public class AdminUsersController(
     IUserRepository userRepo,
     IBalanceRepository balanceRepo,
     IPasskeyRepository passkeyRepo,
-    ITokenService tokens) : ControllerManager {
+    ITokenService tokens,
+    IMemoryCache cache) : ControllerManager {
+
+    /// <summary>
+    /// Drops this user's cached account state so that disabling or enabling them takes effect on the
+    /// next request rather than after <see cref="SerbleAuthenticationHandler.AccountStateTtl"/>. Only
+    /// helps the instance that served the change; the TTL remains the bound for any other replica.
+    /// </summary>
+    private void InvalidateAccountState(string userId) =>
+        cache.Remove(SerbleAuthenticationHandler.AccountStateCachePrefix + userId);
 
     // -------- Stats --------
 
@@ -102,6 +112,7 @@ public class AdminUsersController(
         if (user == null) return NotFound();
         user.PermLevel = 0;
         await userRepo.UpdateUser(user);
+        InvalidateAccountState(id);
         logger.LogInformation("Admin {AdminId} disabled user {TargetId}", HttpContext.User.GetUserId(), id);
         return Ok(new { success = true });
     }
@@ -114,6 +125,7 @@ public class AdminUsersController(
         if (user.PermLevel == 0) {
             user.PermLevel = 1;
             await userRepo.UpdateUser(user);
+            InvalidateAccountState(id);
         }
         logger.LogInformation("Admin {AdminId} enabled user {TargetId}", HttpContext.User.GetUserId(), id);
         return Ok(new { success = true });

@@ -6,8 +6,9 @@ namespace SerbleAPI.Data;
 /// <summary>
 /// Cryptographic helpers for the OIDC provider: high-entropy handles for authorization
 /// codes / refresh tokens, refresh-token hashing for at-rest storage, and PKCE S256
-/// verification. Distinct from <see cref="SerbleUtils.RandomString"/>, which is not
-/// cryptographically secure and must not be used for these values.
+/// verification. <see cref="SerbleUtils.RandomString"/> now draws from the same
+/// <see cref="RandomNumberGenerator"/>, so either is safe for secret material; prefer
+/// <see cref="NewHandle"/> here, where a URL-safe handle is what callers want.
 /// </summary>
 public static class OidcCrypto {
 

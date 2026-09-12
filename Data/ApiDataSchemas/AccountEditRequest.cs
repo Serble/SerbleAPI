@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using System.Text.RegularExpressions;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
@@ -7,8 +8,8 @@ namespace SerbleAPI.Data.ApiDataSchemas;
 public class AccountEditRequest {
     /// <summary>
     /// The width of the Email column. The standard caps an address at 254 characters, so this
-    /// rejects only what could not be stored anyway; the regex below judges whether it is an
-    /// address at all.
+    /// rejects only what could not be stored anyway; <see cref="IsEmailAddress"/> judges whether it
+    /// is an address at all.
     /// </summary>
     private const int MaxEmailLength = 255;
 
@@ -50,7 +51,7 @@ public class AccountEditRequest {
                 if (NewValue.Length > MaxEmailLength) {
                     throw new ArgumentException($"Email cannot be longer than {MaxEmailLength} characters");
                 }
-                if (!Regex.IsMatch(NewValue, """(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])""")) {
+                if (!IsEmailAddress(NewValue)) {
                     throw new ArgumentException("Invalid email");
                 }
                 target.Email = NewValue;
@@ -83,5 +84,32 @@ public class AccountEditRequest {
                 throw new ArgumentException("Field doesn't exist");
         }
         return target;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is an email address, and nothing but an email address.
+    ///
+    /// <para>This replaces a hand-written RFC 5322 regex. That pattern had a character class in its
+    /// domain-literal branch whose upper bound was mistyped, which let a backslash be consumed by
+    /// either side of an alternation — the classic <c>(a|aa)+</c> shape. Matching
+    /// <c>a@[1.1.1.a:</c> followed by n backslashes then cost time exponential in n, so roughly
+    /// seventy bytes of request body pinned a CPU core for seconds, and the field's 255-character
+    /// budget left ample room. A parser walks the input once and cannot be made to backtrack.</para>
+    ///
+    /// <para>The equality check is not redundant. <see cref="MailAddress"/> parses a full mailbox,
+    /// so it happily accepts <c>Name &lt;a@b.co&gt;</c> and keeps only the address part; comparing
+    /// what it parsed against what arrived is what rejects a value carrying anything besides the
+    /// address. The old regex was also unanchored, so it matched an address sitting anywhere inside
+    /// a longer string and stored the whole thing.</para>
+    /// </summary>
+    private static bool IsEmailAddress(string value) {
+        if (!MailAddress.TryCreate(value, out MailAddress? parsed)) return false;
+        if (!string.Equals(parsed.Address, value, StringComparison.Ordinal)) return false;
+
+        // The previous pattern required either a dotted domain or a bracketed IPv4 literal, both of
+        // which contain a dot. Kept so that loosening validation is not a silent side effect of
+        // fixing the denial of service: MailAddress alone would accept "a@b", which can never
+        // receive the confirmation mail this address exists to be sent.
+        return parsed.Host.Contains('.');
     }
 }

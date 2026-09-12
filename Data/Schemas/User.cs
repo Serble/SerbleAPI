@@ -157,4 +157,16 @@ public class User {
 
     public bool IsAdmin() => PermLevel == 2;
 
+    /// <summary>
+    /// Whether the account is disabled (<see cref="PermLevel"/> 0).
+    /// <para>
+    /// Every path that authenticates someone, and the authentication handler that accepts an
+    /// existing token, checks this. A disabled account otherwise kept working entirely: the flag was
+    /// written by the admin disable route and then read nowhere on the login or token paths, so the
+    /// account could still log in for fresh tokens and every token it already held stayed valid.
+    /// One definition, so no caller can disagree about what disabled means.
+    /// </para>
+    /// </summary>
+    public bool IsDisabled() => PermLevel == 0;
+
 }

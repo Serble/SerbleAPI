@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 using SerbleAPI.Repositories.Impl;
 using SerbleAPI.Services;
@@ -34,10 +36,30 @@ public class SerbleAuthenticationHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     ITokenService tokens,
-    IAppApiKeyRepository apiKeys)
+    IAppApiKeyRepository apiKeys,
+    IUserRepository users,
+    IMemoryCache cache)
     : AuthenticationHandler<SerbleAuthenticationOptions>(options, logger, encoder) {
 
     public const string SchemeName = "Serble";
+
+    /// <summary>
+    /// Cache key prefix for the per-user account-state lookup. Public so that the admin routes which
+    /// change that state can drop the entry and have it take effect at once.
+    /// </summary>
+    public const string AccountStateCachePrefix = "authstate:usable:";
+
+    /// <summary>
+    /// How long an account-state lookup is reused. This is the window in which a token belonging to
+    /// a just-disabled account still works, so it is short; it is not zero because the alternative
+    /// is a user row read on every single authenticated request.
+    /// <para>
+    /// Bounding it this way is only necessary because tokens carry no revocation marker. Once they
+    /// have a version stamped in them that a password change or a disable can bump (SA-05), that
+    /// becomes the immediate mechanism and this is just a cheap first line.
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan AccountStateTtl = TimeSpan.FromSeconds(30);
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync() {
         // Primary: custom SerbleAuth header
@@ -58,8 +80,8 @@ public class SerbleAuthenticationHandler(
             return AuthenticateResult.Fail("SerbleAuth header must be in format 'TYPE TOKEN'");
 
         return parts[0] switch {
-            "User"   => AuthenticateAsUser(parts[1]),
-            "App"    => AuthenticateAsApp(parts[1]),
+            "User"   => await AuthenticateAsUser(parts[1]),
+            "App"    => await AuthenticateAsApp(parts[1]),
             "ApiKey" => await AuthenticateAsApiKey(parts[1]),
             _        => AuthenticateResult.Fail($"Unknown SerbleAuth type '{parts[0]}'")
         };
@@ -83,8 +105,8 @@ public class SerbleAuthenticationHandler(
             return await AuthenticateAsApiKey(token);
 
         // Try user token first, fall back to app token
-        AuthenticateResult userResult = AuthenticateAsUser(token);
-        return userResult.Succeeded ? userResult : AuthenticateAsApp(token);
+        AuthenticateResult userResult = await AuthenticateAsUser(token);
+        return userResult.Succeeded ? userResult : await AuthenticateAsApp(token);
     }
 
     private async Task<AuthenticateResult> AuthenticateAsApiKey(string key) {
@@ -99,9 +121,12 @@ public class SerbleAuthenticationHandler(
         ]);
     }
 
-    private AuthenticateResult AuthenticateAsUser(string token) {
+    private async Task<AuthenticateResult> AuthenticateAsUser(string token) {
         if (!tokens.ValidateLoginToken(token, out string? userId)) {
             return AuthenticateResult.Fail("Invalid user token");
+        }
+        if (!await IsAccountUsable(userId!)) {
+            return AuthenticateResult.Fail("Account is disabled");
         }
 
         return BuildTicket([
@@ -111,9 +136,13 @@ public class SerbleAuthenticationHandler(
         ]);
     }
 
-    private AuthenticateResult AuthenticateAsApp(string token) {
+    private async Task<AuthenticateResult> AuthenticateAsApp(string token) {
         if (!tokens.ValidateAccessToken(token, out string? appUserId, out string? appId, out string scope))
             return AuthenticateResult.Fail("Invalid app access token");
+        // An app token acts on behalf of a user, so disabling the account has to stop the app's
+        // token too — otherwise revoking access leaves every third-party grant still working.
+        if (!await IsAccountUsable(appUserId!))
+            return AuthenticateResult.Fail("Account is disabled");
 
         List<Claim> claims = [
             new Claim("userid",    appUserId!),
@@ -123,6 +152,29 @@ public class SerbleAuthenticationHandler(
         // appid is absent on tokens issued before it was added; official-app checks treat those as non-official.
         if (!string.IsNullOrEmpty(appId)) claims.Add(new Claim("appid", appId));
         return BuildTicket(claims);
+    }
+
+    /// <summary>
+    /// Whether the account behind a token may still act. A valid signature only proves the token was
+    /// issued; it says nothing about whether the account still exists or is still permitted, and
+    /// tokens here are long-lived, so this is the only thing standing between a disabled account and
+    /// every authenticated endpoint.
+    /// <para>
+    /// Fails closed: a user row that cannot be found is treated as unusable, which also covers a
+    /// token outliving the account it names. A lookup that throws propagates rather than being
+    /// swallowed into a pass.
+    /// </para>
+    /// </summary>
+    private async Task<bool> IsAccountUsable(string userId) {
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        string cacheKey = AccountStateCachePrefix + userId;
+        if (cache.TryGetValue(cacheKey, out bool cached)) return cached;
+
+        User? user = await users.GetUser(userId);
+        bool usable = user != null && !user.IsDisabled();
+        cache.Set(cacheKey, usable, AccountStateTtl);
+        return usable;
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {

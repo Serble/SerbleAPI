@@ -29,6 +29,12 @@ public static class Program {
             eventArgs.Cancel = true;
         };
         
+        // Backstop for catastrophic backtracking: any Regex constructed without an explicit timeout
+        // gives up after this instead of spinning a core. The one pattern that could be driven that
+        // way has been replaced by a parser, so nothing relies on this today — it is here so that
+        // the next pattern someone adds cannot become a denial of service on its own.
+        AppDomain.CurrentDomain.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", TimeSpan.FromMilliseconds(250));
+
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
         // Startup time config info

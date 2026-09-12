@@ -31,6 +31,12 @@ public class AppEditRequest {
                 break;
             
             case "redirect_uri":
+                // Checked on the way in rather than at redirect time: the field is a ';'-separated
+                // list, so an unchecked write here appends a target the authorize endpoint will
+                // then treat as registered.
+                if (!RedirectUriRules.TryValidateField(NewValue, out string? redirectUriError)) {
+                    throw new ArgumentException(redirectUriError);
+                }
                 target.RedirectUri = NewValue;
                 break;
 

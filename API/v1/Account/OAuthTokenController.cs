@@ -47,6 +47,20 @@ public class OAuthTokenController(
             return BadRequest("Invalid grant_type, must be 'authorization_code'");
         }
 
+        User? user = await users.GetUser(userId!);
+        if (user == null) {
+            return BadRequest("User not found");
+        }
+
+        // The code is a stateless JWT, so de-authorising the app cannot invalidate one already
+        // issued. Without this the app simply re-runs the exchange and gets working tokens back,
+        // which makes the revoke button on the authorized-apps page do nothing. The refresh
+        // exchange below has always checked this; the code exchange did not.
+        AuthorizedApp[] authedApps = await user.GetAuthorizedApps();
+        if (authedApps.All(authorizedApp => authorizedApp.AppId != client_id)) {
+            return BadRequest("App is not authorized");
+        }
+
         return Ok(new AccessTokenResponse {
             ExpiresIn = 87600,
             AccessToken = tokens.GenerateAccessToken(userId!, client_id, scope),

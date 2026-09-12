@@ -24,7 +24,6 @@ namespace SerbleAPI.API.v1.Apps;
 public class ItemController(
     ILogger<ItemController> logger,
     IItemRepository itemRepo,
-    IBalanceRepository balanceRepo,
     IServerConfigService serverConfig) : ControllerManager {
 
     public class CreateItemBody {
@@ -96,15 +95,8 @@ public class ItemController(
         if (!iconAllowed)
             return BadRequest("IconUrl must start with an allowed prefix.");
 
-        // Resolve the creation fee up front and verify the app can afford it before minting.
         ItemCreationFee fee = await serverConfig.GetItemCreationFee();
         ulong feeRaw = fee.Raw;
-        if (feeRaw > 0) {
-            Balance balance = await balanceRepo.GetBalance(BalanceOwnerType.App, appId);
-            if (balance.Coins < feeRaw)
-                return StatusCode(StatusCodes.Status402PaymentRequired,
-                    $"Insufficient funds: minting an item costs {fee.Coins} coins.");
-        }
 
         Item item = new() {
             Id           = OidcCrypto.NewHandle(),
@@ -116,13 +108,19 @@ public class ItemController(
             Description  = string.IsNullOrWhiteSpace(body.Description) ? null : body.Description.Trim(),
             IconUrl      = iconUrl
         };
-        await itemRepo.CreateItem(item);
-
-        // Charge the fee after the item exists (burn from the app's balance). RemoveCoins clamps at
-        // zero, so a concurrent spend can never drive the balance negative.
+        // The fee is charged in the same transaction that creates the item, and charged first, so
+        // the affordability check cannot go stale between the two: without that, N concurrent
+        // creations all see one fee's worth of coins and get an item each.
+        ItemCreationOutcome outcome = await itemRepo.CreateItemWithFee(
+            item, feeRaw, $"Item creation fee: {item.Id}");
+        if (!outcome.Success) {
+            return outcome.Error switch {
+                ItemCreationError.InsufficientFunds => StatusCode(StatusCodes.Status402PaymentRequired,
+                    $"Insufficient funds: minting an item costs {fee.Coins} coins."),
+                _ => BadRequest("Item could not be created.")
+            };
+        }
         if (feeRaw > 0) {
-            await balanceRepo.RemoveCoins(BalanceOwnerType.App, appId, feeRaw,
-                $"Item creation fee: {item.Id}");
             logger.LogInformation("App {AppId} charged {Fee} coins for item {ItemId}",
                 appId, fee.Coins, item.Id);
         }

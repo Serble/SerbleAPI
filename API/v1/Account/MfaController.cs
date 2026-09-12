@@ -29,6 +29,12 @@ public class MfaController(ITokenService tokens, IUserRepository userRepo) : Con
             return Unauthorized("User not found");
         }
 
+        // The account can be disabled between the password step and this one, and the first-step
+        // token outlives that change, so it is re-checked here rather than trusted from step one.
+        if (user.IsDisabled()) {
+            return Unauthorized("Account is disabled");
+        }
+
         if (!await user.ValidateTotp(body.TotpCode)) {
             return Unauthorized("Invalid TOTP code");
         }

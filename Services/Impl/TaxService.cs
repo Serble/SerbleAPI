@@ -695,7 +695,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             if (due == 0) continue;
 
             ulong balanceBefore = balance.Coins;
-            balance.Coins -= due;
+            balance.SetCoins(balance.Coins - due);
             remainingCapacity -= due;
             chunkTotal += due;
             chunkAccounts++;
@@ -724,7 +724,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             });
         }
 
-        boss.Coins += chunkTotal;
+        boss.Credit(chunkTotal);
         cycle.Collected += chunkTotal;
         cycle.AccountsTaxed += chunkAccounts;
         cycle.CursorBalanceId = cursor;
@@ -762,8 +762,8 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             DbBalance target = await LoadDefaultBalanceForUpdate(BalanceOwnerType.App, recipient.AppId, cancellationToken);
             ulong balanceBefore = target.Coins;
             appsPaid++;
-            boss.Coins -= payout;
-            target.Coins += payout;
+            boss.SetCoins(boss.Coins - payout);
+            target.Credit(payout);
             totalDistributed += payout;
             paid.Add(new AppBalanceChange(recipient.AppId, payout, balanceBefore, target.Coins));
 
@@ -1006,7 +1006,6 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             Id = Guid.NewGuid().ToString(),
             OwnerType = (int)ownerType,
             OwnerId = ownerId,
-            Coins = 0,
             DateCreated = DateTime.UtcNow
         };
         db.Balances.Add(created);

@@ -1,6 +1,4 @@
-using System.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Models;
 
@@ -25,23 +23,40 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         DateCreated = r.DateCreated
     };
 
-    public async Task<TransferOutcome> Transfer(
+    public Task<TransferOutcome> Transfer(
         BalanceOwnerType fromType, string fromId,
         BalanceOwnerType toType, string toId,
         ulong amount, string? description) {
 
-        if (amount == 0) return TransferOutcome.Fail(TransferError.ZeroAmount);
-        if (fromType == toType && fromId == toId) return TransferOutcome.Fail(TransferError.SameOwner);
+        // Cheap rejections that need no database state, so they never open a transaction.
+        if (amount == 0) return Task.FromResult(TransferOutcome.Fail(TransferError.ZeroAmount));
+        if (fromType == toType && fromId == toId)
+            return Task.FromResult(TransferOutcome.Fail(TransferError.SameOwner));
 
-        DbBalance from = await GetOrCreateDefault(fromType, fromId);
-        DbBalance to = await GetOrCreateDefault(toType, toId);
+        return BalanceLocking.Run(db,
+            () => TransferCore(fromType, fromId, toType, toId, amount, description),
+            outcome => outcome.Success);
+    }
+
+    private async Task<TransferOutcome> TransferCore(
+        BalanceOwnerType fromType, string fromId,
+        BalanceOwnerType toType, string toId,
+        ulong amount, string? description) {
+
+        // Both rows are taken FOR UPDATE before either is looked at, so the funds check below
+        // still holds when the write lands: a concurrent transfer out of the same balance waits
+        // here rather than reading the same starting figure and crediting a second recipient.
+        Dictionary<(BalanceOwnerType type, string id), DbBalance> balances =
+            await BalanceLocking.LockDefaults(db, [(fromType, fromId), (toType, toId)]);
+        DbBalance from = balances[(fromType, fromId)];
+        DbBalance to = balances[(toType, toId)];
 
         if (from.Coins < amount) return TransferOutcome.Fail(TransferError.InsufficientFunds);
-        if (to.Coins > ulong.MaxValue - amount) return TransferOutcome.Fail(TransferError.RecipientOverflow);
+        if (!to.CanCredit(amount)) return TransferOutcome.Fail(TransferError.RecipientOverflow);
 
         // Zero-sum: deduct from sender, add to receiver, record the movement — one atomic save.
-        from.Coins -= amount;
-        to.Coins += amount;
+        from.SetCoins(from.Coins - amount);
+        to.SetCoins(to.Coins + amount);
 
         DbTransaction tx = new() {
             Id            = Guid.NewGuid().ToString(),
@@ -57,19 +72,12 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         return TransferOutcome.Ok(Map(tx), MapBalance(from), MapBalance(to));
     }
 
-    public async Task<TradeOutcome> ExecuteTrade(TransactionProposal proposal) {
-        // Serialize the read-validate-move-save under a serializable transaction so two
-        // proposals touching the same item/balance can't both pass re-validation concurrently
-        // (TOCTOU). On a serialization failure the save throws and the caller marks the proposal
-        // Failed. Non-relational providers (tests) skip the explicit transaction.
-        await using IDbContextTransaction? tx = db.Database.IsRelational()
-            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable)
-            : null;
-
-        TradeOutcome outcome = await ExecuteTradeCore(proposal);
-        if (outcome.Success && tx != null) await tx.CommitAsync();
-        return outcome;
-    }
+    public Task<TradeOutcome> ExecuteTrade(TransactionProposal proposal) =>
+        // Same discipline as a plain transfer, plus the item legs: every balance the trade touches
+        // is locked before anything is validated, and the serializable transaction covers the item
+        // rows so two proposals cannot both pass re-validation against the same item (TOCTOU).
+        // A trade rolled back for a deadlock is retried rather than reported as failed.
+        BalanceLocking.Run(db, () => ExecuteTradeCore(proposal), outcome => outcome.Success);
 
     private async Task<TradeOutcome> ExecuteTradeCore(TransactionProposal proposal) {
         ulong requestedCoins = proposal.Amount;
@@ -80,6 +88,21 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         if (requestedCoins == 0 && offeredCoins == 0
             && offeredItemIds.Count == 0 && requestedItemIds.Count == 0)
             return TradeOutcome.Fail(TradeError.Empty);
+
+        // Locks first, in one ordered batch, before any balance is read or checked. Which balances
+        // the trade needs is known from the proposal alone, so this does not depend on anything
+        // read below.
+        List<(BalanceOwnerType, string)> owners = [];
+        if (requestedCoins > 0) {
+            owners.Add((BalanceOwnerType.User, proposal.UserId));
+            owners.Add((proposal.RecipientType, proposal.RecipientId));
+        }
+        if (offeredCoins > 0) {
+            owners.Add((BalanceOwnerType.App, proposal.AppId));
+            owners.Add((BalanceOwnerType.User, proposal.UserId));
+        }
+        Dictionary<(BalanceOwnerType type, string id), DbBalance> balances =
+            await BalanceLocking.LockDefaults(db, owners);
 
         // Load every referenced item (tracked, so ownership edits are saved with the trade).
         List<string> allItemIds = offeredItemIds.Concat(requestedItemIds).ToList();
@@ -99,17 +122,16 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
                 return TradeOutcome.Fail(TradeError.RequestedItemNotOwned);
         }
 
-        // Resolve the coin balances we'll touch (tracked, created on demand).
         DbTransaction? requestedTx = null;
         DbTransaction? offeredTx = null;
 
         if (requestedCoins > 0) {
-            DbBalance payer = await GetOrCreateDefault(BalanceOwnerType.User, proposal.UserId);
-            DbBalance recipient = await GetOrCreateDefault(proposal.RecipientType, proposal.RecipientId);
+            DbBalance payer = balances[(BalanceOwnerType.User, proposal.UserId)];
+            DbBalance recipient = balances[(proposal.RecipientType, proposal.RecipientId)];
             if (payer.Coins < requestedCoins) return TradeOutcome.Fail(TradeError.InsufficientUserFunds);
-            if (recipient.Coins > ulong.MaxValue - requestedCoins) return TradeOutcome.Fail(TradeError.Overflow);
-            payer.Coins -= requestedCoins;
-            recipient.Coins += requestedCoins;
+            if (!recipient.CanCredit(requestedCoins)) return TradeOutcome.Fail(TradeError.Overflow);
+            payer.SetCoins(payer.Coins - requestedCoins);
+            recipient.SetCoins(recipient.Coins + requestedCoins);
             requestedTx = new DbTransaction {
                 Id            = Guid.NewGuid().ToString(),
                 FromBalanceId = payer.Id,
@@ -122,12 +144,12 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         }
 
         if (offeredCoins > 0) {
-            DbBalance appBalance = await GetOrCreateDefault(BalanceOwnerType.App, proposal.AppId);
-            DbBalance userBalance = await GetOrCreateDefault(BalanceOwnerType.User, proposal.UserId);
+            DbBalance appBalance = balances[(BalanceOwnerType.App, proposal.AppId)];
+            DbBalance userBalance = balances[(BalanceOwnerType.User, proposal.UserId)];
             if (appBalance.Coins < offeredCoins) return TradeOutcome.Fail(TradeError.InsufficientAppFunds);
-            if (userBalance.Coins > ulong.MaxValue - offeredCoins) return TradeOutcome.Fail(TradeError.Overflow);
-            appBalance.Coins -= offeredCoins;
-            userBalance.Coins += offeredCoins;
+            if (!userBalance.CanCredit(offeredCoins)) return TradeOutcome.Fail(TradeError.Overflow);
+            appBalance.SetCoins(appBalance.Coins - offeredCoins);
+            userBalance.SetCoins(userBalance.Coins + offeredCoins);
             offeredTx = new DbTransaction {
                 Id            = Guid.NewGuid().ToString(),
                 FromBalanceId = appBalance.Id,
@@ -170,17 +192,10 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         };
     }
 
-    public async Task<TradeOutcome> ExecuteUserTrade(UserTrade trade) {
-        // Same TOCTOU protection as ExecuteTrade: serialize read-validate-move-save so two trades
-        // touching the same item/balance can't both pass re-validation concurrently.
-        await using IDbContextTransaction? tx = db.Database.IsRelational()
-            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable)
-            : null;
-
-        TradeOutcome outcome = await ExecuteUserTradeCore(trade);
-        if (outcome.Success && tx != null) await tx.CommitAsync();
-        return outcome;
-    }
+    public Task<TradeOutcome> ExecuteUserTrade(UserTrade trade) =>
+        // Same protection as ExecuteTrade: balances locked in a fixed order before validation, the
+        // whole read-validate-move-save serialized, and a rolled-back attempt retried.
+        BalanceLocking.Run(db, () => ExecuteUserTradeCore(trade), outcome => outcome.Success);
 
     private async Task<TradeOutcome> ExecuteUserTradeCore(UserTrade trade) {
         ulong offeredCoins = trade.OfferedCoins;       // initiator (from) → recipient (to)
@@ -191,6 +206,16 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         if (offeredCoins == 0 && requestedCoins == 0
             && offeredItemIds.Count == 0 && requestedItemIds.Count == 0)
             return TradeOutcome.Fail(TradeError.Empty);
+
+        // Both parties' balances, locked in a fixed order before anything is validated. A trade in
+        // each direction between the same pair therefore queues instead of deadlocking.
+        List<(BalanceOwnerType, string)> owners = [];
+        if (offeredCoins > 0 || requestedCoins > 0) {
+            owners.Add((BalanceOwnerType.User, trade.FromUserId));
+            owners.Add((BalanceOwnerType.User, trade.ToUserId));
+        }
+        Dictionary<(BalanceOwnerType type, string id), DbBalance> balances =
+            await BalanceLocking.LockDefaults(db, owners);
 
         // Load every referenced item (tracked, so ownership edits are saved with the trade).
         List<string> allItemIds = offeredItemIds.Concat(requestedItemIds).ToList();
@@ -215,12 +240,12 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         DbTransaction? requestedTx = null;
 
         if (offeredCoins > 0) {
-            DbBalance from = await GetOrCreateDefault(BalanceOwnerType.User, trade.FromUserId);
-            DbBalance to = await GetOrCreateDefault(BalanceOwnerType.User, trade.ToUserId);
+            DbBalance from = balances[(BalanceOwnerType.User, trade.FromUserId)];
+            DbBalance to = balances[(BalanceOwnerType.User, trade.ToUserId)];
             if (from.Coins < offeredCoins) return TradeOutcome.Fail(TradeError.InsufficientInitiatorFunds);
-            if (to.Coins > ulong.MaxValue - offeredCoins) return TradeOutcome.Fail(TradeError.Overflow);
-            from.Coins -= offeredCoins;
-            to.Coins += offeredCoins;
+            if (!to.CanCredit(offeredCoins)) return TradeOutcome.Fail(TradeError.Overflow);
+            from.SetCoins(from.Coins - offeredCoins);
+            to.SetCoins(to.Coins + offeredCoins);
             offeredTx = new DbTransaction {
                 Id = Guid.NewGuid().ToString(), FromBalanceId = from.Id, ToBalanceId = to.Id,
                 Amount = offeredCoins, Description = trade.Description, DateCreated = DateTime.UtcNow
@@ -229,12 +254,12 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
         }
 
         if (requestedCoins > 0) {
-            DbBalance from = await GetOrCreateDefault(BalanceOwnerType.User, trade.ToUserId);
-            DbBalance to = await GetOrCreateDefault(BalanceOwnerType.User, trade.FromUserId);
+            DbBalance from = balances[(BalanceOwnerType.User, trade.ToUserId)];
+            DbBalance to = balances[(BalanceOwnerType.User, trade.FromUserId)];
             if (from.Coins < requestedCoins) return TradeOutcome.Fail(TradeError.InsufficientCounterpartyFunds);
-            if (to.Coins > ulong.MaxValue - requestedCoins) return TradeOutcome.Fail(TradeError.Overflow);
-            from.Coins -= requestedCoins;
-            to.Coins += requestedCoins;
+            if (!to.CanCredit(requestedCoins)) return TradeOutcome.Fail(TradeError.Overflow);
+            from.SetCoins(from.Coins - requestedCoins);
+            to.SetCoins(to.Coins + requestedCoins);
             requestedTx = new DbTransaction {
                 Id = Guid.NewGuid().ToString(), FromBalanceId = from.Id, ToBalanceId = to.Id,
                 Amount = requestedCoins, Description = trade.Description, DateCreated = DateTime.UtcNow
@@ -337,26 +362,4 @@ public class TransactionRepository(SerbleDbContext db) : ITransactionRepository 
             .ToListAsync();
     }
 
-    /// <summary>
-    /// Returns the owner's default (oldest) balance tracked, creating it if none exists. The
-    /// new row's id is assigned immediately so it can be referenced by a transaction within the
-    /// same save.
-    /// </summary>
-    private async Task<DbBalance> GetOrCreateDefault(BalanceOwnerType ownerType, string ownerId) {
-        int type = (int)ownerType;
-        DbBalance? row = await db.Balances
-            .OrderBy(b => b.DateCreated)
-            .FirstOrDefaultAsync(b => b.OwnerType == type && b.OwnerId == ownerId);
-        if (row != null) return row;
-
-        row = new DbBalance {
-            Id = Guid.NewGuid().ToString(),
-            OwnerType = type,
-            OwnerId = ownerId,
-            Coins = 0,
-            DateCreated = DateTime.UtcNow
-        };
-        db.Balances.Add(row);
-        return row;
-    }
 }

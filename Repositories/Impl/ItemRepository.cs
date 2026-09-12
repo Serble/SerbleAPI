@@ -18,6 +18,37 @@ public class ItemRepository(SerbleDbContext db) : IItemRepository {
     };
 
     public async Task CreateItem(Item item) {
+        Track(item);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<ItemCreationOutcome> CreateItemWithFee(Item item, ulong fee, string? feeDescription) {
+        if (fee == 0) {
+            await CreateItem(item);
+            return ItemCreationOutcome.Ok();
+        }
+
+        // The fee and the item are one transaction, and the debit happens before the item exists:
+        // charging afterwards lets concurrent creations all pass the same affordability check and
+        // mint an item each, and a clamped debit then burns whatever is left instead of the fee. A
+        // debit that cannot be paid in full rolls the item back with it.
+        return await BalanceLocking.Run(db, async () => {
+            DbBalance balance = await BalanceLocking.LockDefault(db, item.OwnerType, item.OwnerId);
+            ulong before = balance.Coins;
+            if (!balance.TryDebit(fee)) return ItemCreationOutcome.Fail(ItemCreationError.InsufficientFunds);
+            BalanceLocking.RecordAdjustment(db, balance.Id, before, balance.Coins, feeDescription);
+            Track(item);
+            await db.SaveChangesAsync();
+            return ItemCreationOutcome.Ok();
+        }, outcome => outcome.Success);
+    }
+
+    /// <summary>
+    /// Adds a new item and its genesis ownership record to the change tracker without saving, so
+    /// that a caller can persist both in the same transaction as something else — the creation fee,
+    /// for instance.
+    /// </summary>
+    private void Track(Item item) {
         db.Items.Add(new DbItem {
             Id           = item.Id,
             OwnerType    = (int)item.OwnerType,
@@ -31,7 +62,6 @@ public class ItemRepository(SerbleDbContext db) : IItemRepository {
         // Genesis entry in the item's ownership history: minted into its creator's ownership.
         db.ItemTransactions.Add(
             DbItemTransaction.Created(item.Id, item.OwnerType, item.OwnerId, item.DateCreated));
-        await db.SaveChangesAsync();
     }
 
     public async Task<Item?> GetItem(string id) {
