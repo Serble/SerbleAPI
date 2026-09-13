@@ -112,6 +112,16 @@ public class OidcTokenController(
         }
         user.WithRepos(userRepo);
 
+        // The consent record is authoritative. De-authorising revokes the chains directly; this
+        // catches a chain that predates consent records, or one that revocation missed.
+        AuthorizedApp[] grants = await user.GetAuthorizedApps();
+        if (grants.All(g => g.AppId != app.Id)) {
+            await refreshRepo.RevokeGrant(result.GrantId);
+            logger.LogInformation("OIDC refresh refused for user {UserId} on app {AppId}: grant was withdrawn",
+                user.Id, app.Id);
+            return TokenError("invalid_grant", "Access has been revoked");
+        }
+
         // Re-apply the access gate on every refresh (group removal / app disable takes effect).
         AccessDecision decision = await accessPolicy.Evaluate(user, app);
         if (!decision.Allowed) {

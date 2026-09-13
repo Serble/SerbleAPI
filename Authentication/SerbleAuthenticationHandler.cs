@@ -50,16 +50,16 @@ public class SerbleAuthenticationHandler(
     public const string AccountStateCachePrefix = "authstate:usable:";
 
     /// <summary>
-    /// How long an account-state lookup is reused. This is the window in which a token belonging to
-    /// a just-disabled account still works, so it is short; it is not zero because the alternative
-    /// is a user row read on every single authenticated request.
-    /// <para>
-    /// Bounding it this way is only necessary because tokens carry no revocation marker. Once they
-    /// have a version stamped in them that a password change or a disable can bump (SA-05), that
-    /// becomes the immediate mechanism and this is just a cheap first line.
-    /// </para>
+    /// How long an account-state lookup is reused: the window in which a token belonging to a
+    /// just-disabled or just-signed-out account still works. Not zero, because the alternative is a
+    /// user row read on every authenticated request. Routes that change the state drop the entry, so
+    /// this only bounds other replicas.
     /// </summary>
     public static readonly TimeSpan AccountStateTtl = TimeSpan.FromSeconds(30);
+
+    /// <param name="Usable">Whether the account exists and is not disabled.</param>
+    /// <param name="TokensValidFrom">The revocation cut-off, or null if nothing has been revoked.</param>
+    private readonly record struct AccountState(bool Usable, DateTime? TokensValidFrom);
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync() {
         // Primary: custom SerbleAuth header
@@ -122,11 +122,15 @@ public class SerbleAuthenticationHandler(
     }
 
     private async Task<AuthenticateResult> AuthenticateAsUser(string token) {
-        if (!tokens.ValidateLoginToken(token, out string? userId)) {
+        if (!tokens.ValidateLoginToken(token, out string? userId, out DateTime? issuedAt)) {
             return AuthenticateResult.Fail("Invalid user token");
         }
-        if (!await IsAccountUsable(userId!)) {
+        AccountState state = await GetAccountState(userId!);
+        if (!state.Usable) {
             return AuthenticateResult.Fail("Account is disabled");
+        }
+        if (IsRevoked(state, issuedAt)) {
+            return AuthenticateResult.Fail("Token has been revoked");
         }
 
         return BuildTicket([
@@ -137,12 +141,17 @@ public class SerbleAuthenticationHandler(
     }
 
     private async Task<AuthenticateResult> AuthenticateAsApp(string token) {
-        if (!tokens.ValidateAccessToken(token, out string? appUserId, out string? appId, out string scope))
+        if (!tokens.ValidateAccessToken(token, out string? appUserId, out string? appId, out string scope,
+                out DateTime? issuedAt))
             return AuthenticateResult.Fail("Invalid app access token");
-        // An app token acts on behalf of a user, so disabling the account has to stop the app's
-        // token too — otherwise revoking access leaves every third-party grant still working.
-        if (!await IsAccountUsable(appUserId!))
+        // An app token acts on behalf of a user, so disabling the account stops the app's token too.
+        AccountState state = await GetAccountState(appUserId!);
+        if (!state.Usable)
             return AuthenticateResult.Fail("Account is disabled");
+        // A third-party app holding a refresh token will exchange it for a fresh access token and
+        // carry on; ending that is what de-authorising the app is for.
+        if (IsRevoked(state, issuedAt))
+            return AuthenticateResult.Fail("Token has been revoked");
 
         List<Claim> claims = [
             new Claim("userid",    appUserId!),
@@ -155,26 +164,31 @@ public class SerbleAuthenticationHandler(
     }
 
     /// <summary>
-    /// Whether the account behind a token may still act. A valid signature only proves the token was
-    /// issued; it says nothing about whether the account still exists or is still permitted, and
-    /// tokens here are long-lived, so this is the only thing standing between a disabled account and
-    /// every authenticated endpoint.
-    /// <para>
-    /// Fails closed: a user row that cannot be found is treated as unusable, which also covers a
-    /// token outliving the account it names. A lookup that throws propagates rather than being
-    /// swallowed into a pass.
-    /// </para>
+    /// What the account behind a token currently says about it: a valid signature only proves the
+    /// token was issued. Fails closed — a user row that cannot be found is unusable, which covers a
+    /// token outliving the account it names, and a lookup that throws propagates rather than passing.
     /// </summary>
-    private async Task<bool> IsAccountUsable(string userId) {
-        if (string.IsNullOrEmpty(userId)) return false;
+    private async Task<AccountState> GetAccountState(string userId) {
+        if (string.IsNullOrEmpty(userId)) return new AccountState(false, null);
 
         string cacheKey = AccountStateCachePrefix + userId;
-        if (cache.TryGetValue(cacheKey, out bool cached)) return cached;
+        if (cache.TryGetValue(cacheKey, out AccountState cached)) return cached;
 
         User? user = await users.GetUser(userId);
-        bool usable = user != null && !user.IsDisabled();
-        cache.Set(cacheKey, usable, AccountStateTtl);
-        return usable;
+        AccountState state = user == null || user.IsDisabled()
+            ? new AccountState(false, null)
+            : new AccountState(true, user.TokensValidFrom);
+        cache.Set(cacheKey, state, AccountStateTtl);
+        return state;
+    }
+
+    /// <summary>
+    /// Whether a token predates the account's revocation cut-off. A token with no issue time to
+    /// compare cannot be shown to postdate the cut-off, so it is rejected once one exists.
+    /// </summary>
+    private static bool IsRevoked(AccountState state, DateTime? issuedAt) {
+        if (state.TokensValidFrom is not { } cutoff) return false;
+        return issuedAt is not { } iat || iat < cutoff;
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -13,16 +14,17 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     // User Tokens
     // Claims:
     // - userid
-    public string GenerateLoginToken(string userid) {
+    public string GenerateLoginToken(string userid, DateTime? issuedAt = null) {
         Dictionary<string, string> claims = new() {
             { "userid", userid },
             { "type", "user" }
         };
-        return GenerateToken(claims);
+        return GenerateToken(claims, TimeSpan.FromHours(DefaultExpirationHours), issuedAt: issuedAt);
     }
     
-    public bool ValidateLoginToken(string token, out string? userId) {
+    public bool ValidateLoginToken(string token, out string? userId, out DateTime? issuedAt) {
         userId = null;
+        issuedAt = null;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
@@ -30,6 +32,7 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
             }
             claims.ThrowIfNull();
             if (!claims!.TryGetValue("userid", out userId) || !claims.TryGetValue("type", out string? type)) return false;
+            issuedAt = ReadIssuedAt(claims);
             return type == "user";
         }
         catch (Exception e) {
@@ -117,10 +120,12 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims, 1);
     }
     
-    public bool ValidateAccessToken(string token, out string? userId, out string? appId, out string scope) {
+    public bool ValidateAccessToken(string token, out string? userId, out string? appId, out string scope,
+        out DateTime? issuedAt) {
         userId = null;
         appId = null;
         scope = "";
+        issuedAt = null;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
@@ -132,6 +137,7 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 || !claims.TryGetValue("scope", out scope!)) return false;
             // appid is optional for backwards compatibility with tokens issued before it existed.
             claims.TryGetValue("appid", out appId);
+            issuedAt = ReadIssuedAt(claims);
             return type == "oauth-access";
         }
         catch (Exception e) {
@@ -210,6 +216,13 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         }
     }
     
+    /// <summary>
+    /// How long the token handed out between the password step and the MFA step is valid. It is half
+    /// of a login, so it only has to outlive someone reaching for their authenticator app; anything
+    /// longer is a second-factor bypass for whoever captures one.
+    /// </summary>
+    public static readonly TimeSpan FirstStepLoginTokenLifetime = TimeSpan.FromMinutes(5);
+
     // First Step Login Token (To confirm user logged in and is awaiting MFA verification)
     // Claims:
     // - userid
@@ -218,7 +231,7 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
             { "userid", userId },
             { "type", "first-step-login" }
         };
-        return GenerateToken(claims);
+        return GenerateToken(claims, FirstStepLoginTokenLifetime);
     }
     
     public bool ValidateFirstStepLoginToken(string token, out string? userId) {
@@ -251,18 +264,41 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     }
 
 
-    private string GenerateToken(Dictionary<string, string> claims, int expirationInHours = 87600, string? secret = null) =>
+    /// <summary>Ten years. The lifetime every token type gets unless it names its own.</summary>
+    private const int DefaultExpirationHours = 87600;
+
+    private string GenerateToken(Dictionary<string, string> claims, int expirationInHours = DefaultExpirationHours,
+        string? secret = null) =>
         GenerateToken(claims, TimeSpan.FromHours(expirationInHours), secret);
 
-    private string GenerateToken(Dictionary<string, string> claims, TimeSpan lifetime, string? secret = null) {
+    /// <summary>
+    /// The token's issue time in whole milliseconds since the epoch. The standard <c>iat</c> counts
+    /// whole seconds, too coarse to tell a revocation cut-off from a token minted in the same second;
+    /// it stays on the token as well, so anything reading an ordinary JWT still finds it.
+    /// </summary>
+    public const string IssuedAtMsClaim = "iat_ms";
+
+    /// <param name="issuedAt">
+    /// What to stamp as the token's issue time, or null for now. Pass a revocation cut-off set by the
+    /// same request: a token exactly as old as the cut-off is the one thing it does not reject.
+    /// </param>
+    private string GenerateToken(Dictionary<string, string> claims, TimeSpan lifetime, string? secret = null,
+        DateTime? issuedAt = null) {
         string mySecret = secret ?? settings.Value.Secret;
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();
+        // UtcNow, not Now: a short lifetime has to mean what it says regardless of the host's time
+        // zone. Milliseconds, to match the precision a revocation cut-off is recorded at.
+        DateTime now = TruncateToMilliseconds(issuedAt ?? DateTime.UtcNow);
+        List<Claim> tokenClaims = claims.Select(c => new Claim(c.Key, c.Value)).ToList();
+        tokenClaims.Add(new Claim(IssuedAtMsClaim,
+            new DateTimeOffset(now, TimeSpan.Zero).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
         SecurityTokenDescriptor tokenDescriptor = new() {
-            Subject = new ClaimsIdentity(claims.Select(c => new Claim(c.Key, c.Value)).ToArray()),
-            // UtcNow, not Now: a short lifetime has to mean what it says regardless of the host's
-            // time zone.
-            Expires = DateTime.UtcNow.Add(lifetime),
+            Subject = new ClaimsIdentity(tokenClaims),
+            // Set explicitly: revocation falls back to this for tokens predating iat_ms.
+            IssuedAt = now,
+            NotBefore = now,
+            Expires = now.Add(lifetime),
             Issuer = settings.Value.Issuer,
             Audience = settings.Value.Audience,
             SigningCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature),
@@ -270,6 +306,25 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         SecurityToken token = tokenHandler.CreateToken(tokenDescriptor);
         return tokenHandler.WriteToken(token);
     }
+
+    /// <summary>
+    /// When the token was issued, as UTC, or null if it says nothing usable — which callers read as
+    /// "too old to accept", so an unstamped token fails a cut-off rather than slipping past it.
+    /// Falls back to the second-resolution <c>iat</c>, taken as the start of that second so a token
+    /// from the cut-off's own second counts as older than it.
+    /// </summary>
+    private static DateTime? ReadIssuedAt(Dictionary<string, string> claims) {
+        if (claims.TryGetValue(IssuedAtMsClaim, out string? rawMs)
+            && long.TryParse(rawMs, NumberStyles.Integer, CultureInfo.InvariantCulture, out long ms))
+            return DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
+
+        if (!claims.TryGetValue(JwtRegisteredClaimNames.Iat, out string? raw)) return null;
+        if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)) return null;
+        return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+    }
+
+    private static DateTime TruncateToMilliseconds(DateTime value) =>
+        new(value.Ticks - value.Ticks % TimeSpan.TicksPerMillisecond, value.Kind);
 
     private bool ValidateCurrentToken(string? token, out Dictionary<string, string>? claims, out string failMsg) {
         claims = null;

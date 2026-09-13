@@ -159,6 +159,12 @@ public class OidcAuthorizeController(
             });
         }
 
+        // Before the code, so a grant can never exist without the record that lets the user see it
+        // on their authorized-apps page and withdraw it.
+        await user.AuthorizeApp(new AuthorizedApp(app.Id, string.Join(' ', OidcScopes.Parse(request.Scope))) {
+            GrantType = AuthorizedAppGrantType.Oidc
+        });
+
         OidcAuthorizationCode code = new() {
             Code                = OidcCrypto.NewHandle(),
             ClientId            = app.Id,

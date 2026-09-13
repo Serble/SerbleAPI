@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SerbleAPI.Data.Schemas; 
 
 public class SanitisedUser {
@@ -20,6 +22,14 @@ public class SanitisedUser {
     
     [Obsolete("Stripe Customer ID is no longer provided to clients for security reasons.")]
     public string? StripeCustomerId { get; set; }
+
+    /// <summary>
+    /// A replacement login token, present only when the request that returned this user invalidated
+    /// the token it was made with — currently only a password change. Clients should store it over
+    /// the one they sent. Omitted from the JSON when null, so other responses are unchanged.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReplacementToken { get; set; }
 
     private SanitisedUser() {
         

@@ -12,10 +12,17 @@ namespace SerbleAPI.API.v1.Account;
 [Route("api/v1/account/authorizedApps")]
 [Authorize]
 public class AuthorizedAppsController(
+    ILogger<AuthorizedAppsController> logger,
     IUserRepository userRepo,
     IAppRepository appRepo,
+    IOidcRefreshRepository refreshRepo,
     ITokenService tokens) : ControllerManager {
 
+    /// <summary>
+    /// Every app the user has granted access to, from either authorization flow. Each entry names
+    /// the flow and carries its scopes resolved to identifiers, so a caller need not know either
+    /// notation.
+    /// </summary>
     [HttpGet]
     [Authorize(Policy = "Scope:ManageAccount")]
     public async Task<ActionResult<AuthorizedApp[]>> GetAll() {
@@ -38,6 +45,10 @@ public class AuthorizedAppsController(
         return Ok(tokens.GenerateAuthorizationToken(user.Id, app.AppId, app.Scopes));
     }
 
+    /// <summary>
+    /// Withdraws the user's grant to an app, whichever flow granted it. The refresh chains go with
+    /// the consent row: an OIDC client holding one rotates it indefinitely otherwise.
+    /// </summary>
     [HttpDelete("{appId}")]
     [Authorize(Policy = "UserOnly")]
     public async Task<ActionResult> DeAuthorizeApp(string appId) {
@@ -50,6 +61,9 @@ public class AuthorizedAppsController(
         }
 
         await userRepo.DeleteAuthorizedApp(user.Id, appId);
+        int revokedChains = await refreshRepo.RevokeUserClientGrants(user.Id, appId);
+        logger.LogInformation("User {UserId} de-authorized app {AppId} ({Chains} refresh grants revoked)",
+            user.Id, appId, revokedChains);
         return Ok();
     }
 }

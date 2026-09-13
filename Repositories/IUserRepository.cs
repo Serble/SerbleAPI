@@ -13,11 +13,27 @@ public interface IUserRepository {
     /// <summary>Saves the account. Throws <see cref="UsernameTakenException"/> if the username is taken by another account.</summary>
     Task UpdateUser(User user);
     Task SetLastLogin(string userId, DateTime lastLogin);
+
+    /// <summary>
+    /// Refuses every token for the account issued before <paramref name="validFrom"/>. Writes
+    /// <see cref="Models.DbUser.TokensValidFrom"/> directly rather than going through
+    /// <see cref="UpdateUser"/>, which would let a stale <see cref="User"/> undo it.
+    /// </summary>
+    Task RevokeTokensIssuedBefore(string userId, DateTime validFrom);
+
+    /// <summary>
+    /// Claims TOTP step <paramref name="counter"/>, returning whether this caller got it. False means
+    /// the step was already used, directly or by a later one retiring it. The test and the write are
+    /// one statement, so concurrent attempts with the same code cannot both pass.
+    /// </summary>
+    Task<bool> TryConsumeTotpCounter(string userId, long counter);
+
     Task DeleteUser(string userId);
     Task<long> CountUsers();
     Task<long> CountVerifiedEmailUsers();
     Task<User[]> SearchUsers(string query, int limit);
 
+    /// <summary>Records a grant, replacing any existing one for the same app.</summary>
     Task AddAuthorizedApp(string userId, AuthorizedApp app);
     Task<AuthorizedApp[]> GetAuthorizedApps(string userId);
     Task DeleteAuthorizedApp(string userId, string appId);

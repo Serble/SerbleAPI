@@ -28,6 +28,19 @@ public class User {
     public DateTime DateCreated { get; set; }
     public DateTime? LastLogin { get; set; }
 
+    /// <summary>
+    /// See <see cref="Models.DbUser.TokensValidFrom"/>. Move it with
+    /// <see cref="IUserRepository.RevokeTokensIssuedBefore"/>, never by saving this user: a copy
+    /// loaded before a sign-out would write the old value back and restore the retired tokens.
+    /// </summary>
+    public DateTime? TokensValidFrom { get; set; }
+
+    /// <summary>
+    /// See <see cref="Models.DbUser.LastTotpCounter"/>. Advance it only through
+    /// <see cref="IUserRepository.TryConsumeTotpCounter"/>, for the same reason as above.
+    /// </summary>
+    public long? LastTotpCounter { get; set; }
+
     private AuthorizedApp[]? _obtainedAuthedApps;
     private AuthorizedApp[]? _originalAuthedApps;
 
@@ -128,6 +141,12 @@ public class User {
         }
     }
     
+    /// <summary>
+    /// Whether <paramref name="code"/> is a valid TOTP code that has not already been used. The
+    /// matched step is recorded and anything at or below it refused, so a code seen in transit
+    /// cannot be replayed within the window. A code from the next step therefore invalidates the
+    /// current one.
+    /// </summary>
     public async Task<bool> ValidateTotp(string code) {
         if (TotpSecret == null) {
             TotpSecret = SerbleUtils.RandomString(128);
@@ -136,7 +155,11 @@ public class User {
         
         byte[] secretBytes = Encoding.UTF8.GetBytes(TotpSecret);
         Totp totp = new(secretBytes);
-        return totp.VerifyTotp(code, out _, new VerificationWindow(1, 1));
+        if (!totp.VerifyTotp(code, out long matchedStep, new VerificationWindow(1, 1))) return false;
+
+        if (!await _userRepo!.TryConsumeTotpCounter(Id, matchedStep)) return false;
+        LastTotpCounter = matchedStep;
+        return true;
     }
 
     public async Task<byte[]?> GetTotpQrCode() {

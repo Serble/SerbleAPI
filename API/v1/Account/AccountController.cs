@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SerbleAPI.Authentication;
 using SerbleAPI.Config;
@@ -19,7 +20,9 @@ public class AccountController(
     IOptions<EmailSettings> emailSettings,
     IAntiSpamService antiSpam,
     IUserRepository userRepo,
-    IEmailConfirmationService emailConfirmation) : ControllerManager {
+    IEmailConfirmationService emailConfirmation,
+    ITokenService tokens,
+    IMemoryCache cache) : ControllerManager {
 
     [HttpGet]
     public async Task<ActionResult<SanitisedUser>> Get() {
@@ -89,7 +92,8 @@ public class AccountController(
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
 
-        if (edits.Any(e => e.Field.ToLower() == "password") && !HttpContext.User.IsUser())
+        bool passwordChanged = edits.Any(e => e.Field.ToLower() == "password");
+        if (passwordChanged && !HttpContext.User.IsUser())
             return Forbid();
 
         Dictionary<string, string> t = LocalisationHandler.GetTranslations(
@@ -132,7 +136,22 @@ public class AccountController(
             // Someone else took the name between ApplyChanges' availability check and this save.
             return BadRequest("Username is already taken");
         }
-        return await SanitisedUser.Create(newUser, scopes);
+
+        SanitisedUser result = await SanitisedUser.Create(newUser, scopes);
+
+        // A new password ends the sessions the old one could have leaked into. After the save, so a
+        // rejected edit does not sign anyone out for nothing.
+        if (passwordChanged) {
+            DateTime cutoff = SessionsController.RevocationCutoff();
+            await userRepo.RevokeTokensIssuedBefore(newUser.Id, cutoff);
+            cache.Remove(SerbleAuthenticationHandler.AccountStateCachePrefix + newUser.Id);
+            // The caller's own token is among those retired, so replace it rather than strand them.
+            result.ReplacementToken = tokens.GenerateLoginToken(newUser.Id, cutoff);
+            logger.LogInformation("Password changed for {UserId}; tokens issued before {Cutoff:o} revoked",
+                newUser.Id, cutoff);
+        }
+
+        return result;
     }
 }
 

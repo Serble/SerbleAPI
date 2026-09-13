@@ -55,4 +55,19 @@ public class DbUser {
     public DateTime DateCreated { get; set; }
 
     public DateTime? LastLogin { get; set; }
+
+    /// <summary>
+    /// The instant before which tokens naming this account are no longer accepted, or null if none
+    /// have been revoked. Tokens are self-contained, so this is what takes them back: the
+    /// authentication handler refuses any issued earlier, retiring a whole generation with one
+    /// write rather than a record of each.
+    /// </summary>
+    public DateTime? TokensValidFrom { get; set; }
+
+    /// <summary>
+    /// The highest TOTP time step already accepted for this account, or null if none has been.
+    /// Refusing anything at or below it makes each code usable exactly once, rather than replayable
+    /// for as long as the verification window accepts it.
+    /// </summary>
+    public long? LastTotpCounter { get; set; }
 }

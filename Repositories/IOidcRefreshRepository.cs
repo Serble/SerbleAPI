@@ -33,4 +33,11 @@ public interface IOidcRefreshRepository {
         string scopes, long authTimeUnix, long expiresAtUnix);
 
     Task RevokeGrant(string grantId);
+
+    /// <summary>
+    /// Revokes every live grant a user holds for one client, returning how many chains ended.
+    /// De-authorising an app must do this: refresh tokens rotate indefinitely, so a chain left alone
+    /// keeps minting access tokens forever.
+    /// </summary>
+    Task<int> RevokeUserClientGrants(string userId, string clientId);
 }

@@ -21,7 +21,9 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         TotpSecret      = r.TotpSecret,
         PasswordSalt    = r.PasswordSalt,
         DateCreated     = r.DateCreated,
-        LastLogin       = r.LastLogin
+        LastLogin       = r.LastLogin,
+        TokensValidFrom = r.TokensValidFrom,
+        LastTotpCounter = r.LastTotpCounter
     };
     
     private User? MapWithRepos(DbUser? r) {
@@ -91,6 +93,9 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         row.TotpSecret     = user.TotpSecret;
         row.PasswordSalt   = user.PasswordSalt;
         row.LastLogin      = user.LastLogin;
+        // TokensValidFrom and LastTotpCounter are absent on purpose: both only move forwards, and
+        // writing them from a User loaded earlier would move them back, un-revoking tokens or making
+        // a spent TOTP code usable. RevokeTokensIssuedBefore and TryConsumeTotpCounter write them.
         await SaveUsernameWrite(user.Username, user.Id);
     }
 
@@ -134,6 +139,18 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         if (row == null) return;
         row.LastLogin = lastLogin;
         await db.SaveChangesAsync();
+    }
+
+    public Task RevokeTokensIssuedBefore(string userId, DateTime validFrom) =>
+        db.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.TokensValidFrom, validFrom));
+
+    public async Task<bool> TryConsumeTotpCounter(string userId, long counter) {
+        int affected = await db.Users
+            .Where(u => u.Id == userId && (u.LastTotpCounter == null || u.LastTotpCounter < counter))
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastTotpCounter, counter));
+        return affected > 0;
     }
 
     public async Task DeleteUser(string userId) {
@@ -181,6 +198,7 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             UserId = userId,
             AppId  = app.AppId,
             Scopes = app.Scopes,
+            GrantType = (int)app.GrantType,
             DateCreated = app.DateCreated == default ? DateTime.UtcNow : app.DateCreated
         });
         await db.SaveChangesAsync();
@@ -189,7 +207,10 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
     public Task<AuthorizedApp[]> GetAuthorizedApps(string userId) =>
         db.UserAuthorizedApps
             .Where(a => a.UserId == userId)
-            .Select(a => new AuthorizedApp(a.AppId!, a.Scopes!) { DateCreated = a.DateCreated })
+            .Select(a => new AuthorizedApp(a.AppId!, a.Scopes!) {
+                GrantType   = (AuthorizedAppGrantType)a.GrantType,
+                DateCreated = a.DateCreated
+            })
             .ToArrayAsync();
 
     public Task DeleteAuthorizedApp(string userId, string appId) {

@@ -75,4 +75,19 @@ public class OidcRefreshRepository(SerbleDbContext db) : IOidcRefreshRepository 
         db.OidcRefreshGrants
             .Where(g => g.GrantId == grantId && !g.Revoked)
             .ExecuteUpdateAsync(s => s.SetProperty(g => g.Revoked, true));
+
+    public async Task<int> RevokeUserClientGrants(string userId, string clientId) {
+        // Distinct grant ids, not rows: a rotated chain has several rows but is one grant.
+        int chains = await db.OidcRefreshGrants
+            .Where(g => g.UserId == userId && g.ClientId == clientId && !g.Revoked)
+            .Select(g => g.GrantId)
+            .Distinct()
+            .CountAsync();
+
+        await db.OidcRefreshGrants
+            .Where(g => g.UserId == userId && g.ClientId == clientId && !g.Revoked)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.Revoked, true));
+
+        return chains;
+    }
 }
