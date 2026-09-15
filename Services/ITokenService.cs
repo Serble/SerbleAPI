@@ -39,7 +39,7 @@ public interface ITokenService {
     /// from everyone else's. It grants no access.
     /// </summary>
     string GenerateDeviceToken(string userId);
-    bool ValidateDeviceToken(string token, out string? userId, out string? deviceId, out DateTime? issuedAt);
+    bool ValidateDeviceToken(string token, out string? userId, out string? deviceId);
 
     string GenerateCheckoutSuccessToken(string productId, string secret);
 }

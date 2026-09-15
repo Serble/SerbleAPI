@@ -33,12 +33,11 @@ public static class LoginAttempts {
     /// <summary>The device id of a device token issued to this user, or null.</summary>
     private static string? RecognisedDevice(ITokenService tokens, User user, string? token) {
         if (string.IsNullOrEmpty(token) || token.Length > 2048) return null;
-        if (!tokens.ValidateDeviceToken(token, out string? userId, out string? deviceId, out DateTime? issuedAt)
+        if (!tokens.ValidateDeviceToken(token, out string? userId, out string? deviceId)
             || userId != user.Id
             || string.IsNullOrEmpty(deviceId)) return null;
 
-        // Signing out everywhere forgets devices too.
-        if (user.TokensValidFrom is { } cutoff && (issuedAt == null || issuedAt < cutoff)) return null;
+        // Not a credential, so a revocation cut-off does not apply.
         return deviceId;
     }
 

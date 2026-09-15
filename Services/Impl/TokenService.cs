@@ -268,10 +268,9 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         return GenerateToken(claims, DeviceTokenLifetime);
     }
 
-    public bool ValidateDeviceToken(string token, out string? userId, out string? deviceId, out DateTime? issuedAt) {
+    public bool ValidateDeviceToken(string token, out string? userId, out string? deviceId) {
         userId = null;
         deviceId = null;
-        issuedAt = null;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
@@ -281,7 +280,6 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
                 || !claims.TryGetValue("device", out deviceId)
                 || !claims.TryGetValue("type", out string? type)
                 || type != "device") return false;
-            issuedAt = ReadIssuedAt(claims);
             return true;
         }
         catch (Exception e) {

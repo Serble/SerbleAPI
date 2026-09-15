@@ -77,12 +77,12 @@ public class LoginLockoutTests {
     }
 
     [Fact]
-    public void DeviceFromBeforeSignOutEverywhere_IsNotRecognised() {
+    public void DeviceFromBeforeSignOutEverywhere_IsStillRecognised() {
         string device = _tokens.GenerateDeviceToken("signed-out");
         User user = new() { Id = "signed-out", TokensValidFrom = DateTime.UtcNow.AddSeconds(1) };
         ExhaustSharedBudget(user);
 
-        Assert.False(Attempt(user, "198.51.100.7", device));
+        Assert.True(Attempt(user, "198.51.100.7", device));
     }
 
     [Fact]
