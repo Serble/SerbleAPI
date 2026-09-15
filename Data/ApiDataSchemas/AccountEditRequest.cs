@@ -39,13 +39,8 @@ public class AccountEditRequest {
                 break;
             
             case "password":
-                if (NewValue.Length > 256) {
-                    throw new ArgumentException("Password cannot be longer than 256 characters");
-                }
-
-                target.PasswordSalt ??= SerbleUtils.RandomString(64);
-                target.PasswordHash = (NewValue + target.PasswordSalt).Sha256Hash();
-                break;
+            case "totpenabled":
+                throw new ArgumentException("Use /account/credentials");
             
             case "email":
                 if (NewValue.Length > MaxEmailLength) {
@@ -62,22 +57,6 @@ public class AccountEditRequest {
                     throw new ArgumentException("Invalid language");
                 }
                 target.Language = NewValue;
-                break;
-            
-            case "totpenabled":
-                switch (NewValue.ToLower()) {
-                    case "true":
-                        target.TotpEnabled = true;
-                        target.TotpSecret ??= SerbleUtils.RandomString(128);
-                        break;
-                    case "false":
-                        target.TotpEnabled = false;
-                        target.TotpSecret = null;
-                        break;
-                    default:
-                        throw new ArgumentException("Invalid value for ToptEnabled");
-                }
-
                 break;
 
             default:

@@ -24,6 +24,8 @@ public class AdminUsersController(
     IUserRepository userRepo,
     IBalanceRepository balanceRepo,
     IPasskeyRepository passkeyRepo,
+    ICredentialRepository credentialRepo,
+    ICredentialService credentials,
     ITokenService tokens,
     IMemoryCache cache) : ControllerManager {
 
@@ -63,8 +65,7 @@ public class AdminUsersController(
         User[] results = await userRepo.SearchUsers(query ?? "", limit);
         List<AdminUserView> views = new(results.Length);
         foreach (User u in results) {
-            Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.User, u.Id);
-            views.Add(AdminUserView.From(u, bal.Coins));
+            views.Add(await View(u));
         }
         return Ok(views);
     }
@@ -73,8 +74,19 @@ public class AdminUsersController(
     public async Task<ActionResult<AdminUserView>> Get(string id) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
+        return Ok(await View(user));
+    }
+
+    private async Task<AdminUserView> View(User user) {
         Balance bal = await balanceRepo.GetBalance(BalanceOwnerType.User, user.Id);
-        return Ok(AdminUserView.From(user, bal.Coins));
+        UserCredential? password = await credentialRepo.GetActivePassword(user.Id);
+        return AdminUserView.From(user, bal.Coins, await userRepo.IsTotpInUse(user.Id), password);
+    }
+
+    [HttpGet("{id}/credentials")]
+    public async Task<ActionResult<CredentialOverview>> Credentials(string id) {
+        if (await userRepo.GetUser(id) == null) return NotFound();
+        return await credentials.GetOverview(id, includeSchemes: true);
     }
 
     // -------- Login as user --------
@@ -139,12 +151,6 @@ public class AdminUsersController(
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
 
-        // Clean up passkeys first (UserRepository.DeleteUser handles authorized apps).
-        SavedPasskey[] passkeys = await passkeyRepo.GetUsersPasskeys(id);
-        foreach (SavedPasskey pk in passkeys) {
-            if (pk.CredentialId != null) await passkeyRepo.DeletePasskey(pk.CredentialId);
-        }
-
         await userRepo.DeleteUser(id);
         logger.LogWarning("Admin {AdminId} DELETED user {TargetId} ({TargetUsername})",
             HttpContext.User.GetUserId(), id, user.Username);
@@ -165,10 +171,7 @@ public class AdminUsersController(
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
 
-        string salt = SerbleUtils.RandomString(64);
-        user.PasswordSalt = salt;
-        user.PasswordHash = (body.Password + salt).Sha256Hash();
-        await userRepo.UpdateUser(user);
+        await credentials.AdminSetPassword(id, body.Password);
         logger.LogWarning("Admin {AdminId} reset password for user {TargetId}",
             HttpContext.User.GetUserId(), id);
         return Ok(new { success = true });
@@ -180,9 +183,7 @@ public class AdminUsersController(
     public async Task<IActionResult> Disable2Fa(string id) {
         User? user = await userRepo.GetUser(id);
         if (user == null) return NotFound();
-        user.TotpEnabled = false;
-        user.TotpSecret = null;
-        await userRepo.UpdateUser(user);
+        await credentials.AdminRemoveTotp(id);
         logger.LogWarning("Admin {AdminId} disabled 2FA for user {TargetId}",
             HttpContext.User.GetUserId(), id);
         return Ok(new { success = true });
@@ -196,6 +197,7 @@ public class AdminUsersController(
         if (user == null) return NotFound();
         SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(id);
         return Ok(keys.Select(k => new {
+            id               = k.UserCredentialId,
             name             = k.Name,
             credentialId     = Convert.ToBase64String(k.CredentialId!),
             isBackupEligible = k.IsBackupEligible,
@@ -210,7 +212,7 @@ public class AdminUsersController(
         SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(id);
         SavedPasskey? target = keys.FirstOrDefault(k => k.Name == name);
         if (target == null) return NotFound("Passkey not found");
-        await passkeyRepo.DeletePasskey(target.CredentialId!);
+        await credentials.Delete(id, target.UserCredentialId, asAdmin: true);
         logger.LogInformation("Admin {AdminId} deleted passkey {Name} of user {TargetId}",
             HttpContext.User.GetUserId(), name, id);
         return Ok(new { success = true });
@@ -310,7 +312,7 @@ public class AdminUsersController(
 /// <summary>
 /// Admin-facing user view. Unlike <c>SanitisedUser</c>, this exposes the fields
 /// an admin reasonably needs (perm level, email-verified flag, totp on/off,
-/// language) but never password hashes/salts or totp secrets.
+/// language) but never password hashes or totp secrets.
 /// </summary>
 public class AdminUserView {
     public string Id { get; set; } = "";
@@ -320,20 +322,22 @@ public class AdminUserView {
     public int PermLevel { get; set; }
     public bool TotpEnabled { get; set; }
     public string? Language { get; set; }
-    public bool HasPasswordSalt { get; set; }
+    public bool HasPassword { get; set; }
+    public string? PasswordScheme { get; set; }
     public ulong Coins { get; set; }
     public DateTime DateCreated { get; set; }
     public DateTime? LastLogin { get; set; }
 
-    public static AdminUserView From(User u, ulong coins = 0) => new() {
+    public static AdminUserView From(User u, ulong coins, bool totpEnabled, UserCredential? password) => new() {
         Id              = u.Id,
         Username        = u.Username,
         Email           = u.Email,
         VerifiedEmail   = u.VerifiedEmail,
         PermLevel       = u.PermLevel,
-        TotpEnabled     = u.TotpEnabled,
+        TotpEnabled     = totpEnabled,
         Language        = u.Language,
-        HasPasswordSalt = !string.IsNullOrEmpty(u.PasswordSalt),
+        HasPassword     = password != null,
+        PasswordScheme  = password == null ? null : ((Data.Schemas.PasswordScheme)password.Scheme).ToString(),
         Coins           = coins,
         DateCreated     = u.DateCreated,
         LastLogin       = u.LastLogin

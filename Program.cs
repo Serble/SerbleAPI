@@ -68,9 +68,10 @@ public static class Program {
         builder.Services.AddOptions<OidcSettings>().Bind(builder.Configuration.GetSection("Oidc"));
         builder.Services.AddOptions<RateLimitSettings>().Bind(builder.Configuration.GetSection("RateLimit"));
         builder.Services.AddOptions<ForwardedHeadersSettings>().Bind(builder.Configuration.GetSection("ForwardedHeaders"));
+        builder.Services.AddOptions<PasswordHashingSettings>().Bind(builder.Configuration.GetSection("PasswordHashing"));
         ConfigureForwardedHeaders(builder, forwardedHeaders);
         
-        builder.Services.AddControllers();
+        builder.Services.AddControllers(options => options.Filters.Add<PasswordHasherBusyFilter>());
         builder.Services.AddHttpClient();
         builder.Services.AddSwaggerGen();
         builder.Services.AddEndpointsApiExplorer();
@@ -96,6 +97,7 @@ public static class Program {
 
         // Singleton: the counters are the state.
         builder.Services.AddSingleton<IRateLimitService, RateLimitService>();
+        builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 
         builder.Services.AddScoped<IAntiSpamService, AntiSpamService>();
         builder.Services.AddScoped<IGoogleReCaptchaService, GoogleReCaptchaService>();
@@ -107,6 +109,9 @@ public static class Program {
         builder.Services.AddScoped<IFeatureFlagService, FeatureFlagService>();
         builder.Services.AddScoped<ITaxService, TaxService>();
         builder.Services.AddHostedService<TaxBackgroundService>();
+        builder.Services.AddScoped<ILoginSessionService, LoginSessionService>();
+        builder.Services.AddScoped<ICredentialService, CredentialService>();
+        builder.Services.AddHostedService<PasswordHashUpgradeService>();
         builder.Services.AddScoped<IWebhookDeliveryService, WebhookDeliveryService>();
         builder.Services.AddHostedService<WebhookDispatcherService>();
 
@@ -133,6 +138,8 @@ public static class Program {
         builder.Services.AddScoped<IAppWebhookRepository, AppWebhookRepository>();
         builder.Services.AddScoped<IAppRepository, AppRepository>();
         builder.Services.AddScoped<IPasskeyRepository, PasskeyRepository>();
+        builder.Services.AddScoped<ICredentialRepository, CredentialRepository>();
+        builder.Services.AddScoped<ILoginSessionRepository, LoginSessionRepository>();
         builder.Services.AddScoped<IProductRepository, ProductRepository>();
         builder.Services.AddScoped<INoteRepository, NoteRepository>();
         builder.Services.AddScoped<IKvRepository, KvRepository>();

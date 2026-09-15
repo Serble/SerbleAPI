@@ -26,8 +26,8 @@ public class SessionsController(
         /// <summary>
         /// A replacement token for this caller, stamped at <see cref="TokensValidFrom"/> so the cut-off
         /// does not reject it. Clients should store it over the one they sent. Named as it is on
-        /// <see cref="Data.Schemas.SanitisedUser.ReplacementToken"/>: one name for one thing, so a
-        /// client can adopt it the same way wherever it turns up.
+        /// <see cref="Data.Schemas.CredentialOverview.ReplacementToken"/>, so a client can adopt it the
+        /// same way wherever it turns up.
         /// </summary>
         public string ReplacementToken { get; set; } = "";
     }

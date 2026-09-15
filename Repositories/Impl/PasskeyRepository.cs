@@ -10,6 +10,7 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
 
     private static SavedPasskey Map(DbUserPasskey r) => new() {
         OwnerId                   = r.OwnerId,
+        UserCredentialId          = r.UserCredentialId,
         Name                      = r.Name,
         CredentialId              = Convert.FromBase64String(r.CredentialId!),
         PublicKey                 = Convert.FromBase64String(r.PublicKey!),
@@ -33,8 +34,20 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
     private static string CredId(byte[] credId) => Convert.ToBase64String(credId);
 
     public Task CreatePasskey(SavedPasskey key) {
+        DateTime now = DateTime.UtcNow;
+        key.UserCredentialId = Guid.NewGuid().ToString();
+        db.UserCredentials.Add(new DbUserCredential {
+            Id        = key.UserCredentialId,
+            UserId    = key.OwnerId,
+            Type      = (int)CredentialType.Passkey,
+            Name      = key.Name,
+            Status    = (int)CredentialStatus.Active,
+            CreatedAt = now
+        });
         db.UserPasskeys.Add(new DbUserPasskey {
             OwnerId              = key.OwnerId,
+            UserCredentialId     = key.UserCredentialId,
+            CreatedAt            = now,
             Name                 = key.Name,
             CredentialId         = Convert.ToBase64String(key.CredentialId!),
             PublicKey            = Convert.ToBase64String(key.PublicKey!),
@@ -84,21 +97,7 @@ public class PasskeyRepository(SerbleDbContext db) : IPasskeyRepository {
         await db.SaveChangesAsync();
     }
 
-    public async Task SetPasskeyName(byte[] credId, string name) {
-        string id = CredId(credId);
-        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
-        if (row == null) return;
-        row.Name = name;
-        await db.SaveChangesAsync();
-    }
 
-    public async Task DeletePasskey(byte[] credId) {
-        string id = CredId(credId);
-        DbUserPasskey? row = await db.UserPasskeys.FirstOrDefaultAsync(p => p.CredentialId == id);
-        if (row == null) return;
-        db.UserPasskeys.Remove(row);
-        await db.SaveChangesAsync();
-    }
 
     public async Task UpdatePasskeyDevicePublicKeys(byte[] credId, byte[][] devicePublicKeys) {
         string id = CredId(credId);

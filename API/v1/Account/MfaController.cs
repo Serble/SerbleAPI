@@ -1,10 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SerbleAPI.Authentication;
 using SerbleAPI.Config;
 using SerbleAPI.Data.ApiDataSchemas;
-using SerbleAPI.Data.Schemas;
-using SerbleAPI.Repositories;
 using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Account;
@@ -12,70 +9,21 @@ namespace SerbleAPI.API.v1.Account;
 [ApiController]
 [Route("api/v1/account/mfa")]
 [RateLimit(RateLimitTiers.Auth)]
-public class MfaController(ITokenService tokens, IUserRepository userRepo, IRateLimitService rateLimit) : ControllerManager {
+public class MfaController(ILoginSessionService login) : ControllerManager {
 
-    // Second step of the MFA login flow — no session token yet, only the first-step token from body
+    /// <summary>The TOTP step of a sign-in started at <c>GET api/v1/auth</c>, which returned the login token.</summary>
     [HttpPost]
     [AllowAnonymous]
     public async Task<IActionResult> Authenticate([FromBody] MfaAuthBody body) {
-        if (body.LoginToken == null) {
-            return Unauthorized("Login token is missing");
-        }
+        if (body.LoginToken == null) return Unauthorized("Login token is missing");
 
-        if (!tokens.ValidateFirstStepLoginToken(body.LoginToken, out string? userId)) {
-            return Unauthorized("Invalid login token");
-        }
-        
-        User? user = await userRepo.GetUser(userId!);
-        if (user == null) {
-            return Unauthorized("User not found");
-        }
-
-        // The account can be disabled between the password step and this one, and the first-step
-        // token outlives that change, so it is re-checked here rather than trusted from step one.
-        if (user.IsDisabled()) {
-            return Unauthorized("Account is disabled");
-        }
-
-        // What makes a six-digit code infeasible is tries per account, and the middleware only
-        // sees an address: the account is named by the token in the body.
-        RateLimitDecision attempt = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity, "mfa:" + user.Id);
-        if (!attempt.Allowed) {
-            Response.Headers.RetryAfter = ((int)Math.Ceiling(attempt.RetryAfter.TotalSeconds)).ToString();
-            return StatusCode(StatusCodes.Status429TooManyRequests, "Too many MFA attempts. Try again later.");
-        }
-
-        if (!await user.ValidateTotp(body.TotpCode)) {
-            return Unauthorized("Invalid TOTP code");
-        }
-
-        await userRepo.SetLastLogin(user.Id, DateTime.UtcNow);
-        string token = tokens.GenerateLoginToken(user.Id);
-        return Ok(new {
-            token,
-            success = true
-        });
-    }
-
-    [HttpPost("totp")]
-    [Authorize(Policy = "Scope:ManageAccount")]
-    public async Task<IActionResult> CheckTotp([FromBody] MfaAuthBody body) {
-        User? user = await HttpContext.User.GetUser(userRepo);
-        if (user == null) return Unauthorized();
-        bool valid = await user.ValidateTotp(body.TotpCode);
-        return Ok(new {
-            success = true,
-            valid
-        });
-    }
-
-    [HttpGet("totp/qrcode")]
-    [Authorize(Policy = "UserOnly")]
-    public async Task<IActionResult> GetTotpQrCode() {
-        User? target = await HttpContext.User.GetUser(userRepo);
-        if (target == null) return Unauthorized();
-        byte[]? qrCode = await target.GetTotpQrCode();
-        if (qrCode == null) return BadRequest("TOTP is not enabled.");
-        return File(qrCode, "image/png");
+        LoginStepResult result = await login.Totp(body.LoginToken, body.TotpCode, null, LoginPurpose.Login);
+        return result.Outcome switch {
+            LoginStepOutcome.Complete        => Ok(new { token = result.Token, success = true }),
+            LoginStepOutcome.Continue        => Unauthorized("Additional verification required"),
+            LoginStepOutcome.WrongCredential => Unauthorized("Invalid TOTP code"),
+            LoginStepOutcome.RateLimited     => TooManyRequests(result.RetryAfter, "Too many MFA attempts. Try again later."),
+            _ => Unauthorized("Invalid login token")
+        };
     }
 }

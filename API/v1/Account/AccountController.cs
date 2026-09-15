@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SerbleAPI.Authentication;
 using SerbleAPI.Config;
@@ -21,8 +20,8 @@ public class AccountController(
     IAntiSpamService antiSpam,
     IUserRepository userRepo,
     IEmailConfirmationService emailConfirmation,
-    ITokenService tokens,
-    IMemoryCache cache) : ControllerManager {
+    IPasswordHasher hasher,
+    ICredentialRepository credentials) : ControllerManager {
 
     [HttpGet]
     public async Task<ActionResult<SanitisedUser>> Get() {
@@ -65,17 +64,20 @@ public class AccountController(
         if (await userRepo.GetUserFromName(requestBody.Username) != null)
             return Conflict("User already exists");
 
-        string passwordSalt = SerbleUtils.RandomString(64);
+        string passwordHash = await hasher.Hash(requestBody.Password);
         User newUser = new() {
-            Username     = requestBody.Username,
-            PasswordHash = (requestBody.Password + passwordSalt).Sha256Hash(),
-            PasswordSalt = passwordSalt,
-            PermLevel    = 1
+            Username  = requestBody.Username,
+            PermLevel = 1
         };
         newUser.WithRepos(userRepo);
         User user;
         try {
-            user = await userRepo.AddUser(newUser);
+            user = await credentials.InTransaction(async () => {
+                User added = await userRepo.AddUser(newUser);
+                await credentials.SetPassword(added.Id, passwordHash);
+                await credentials.ReplaceFlows(added.Id, [CredentialTypes.Bit(CredentialType.Password)]);
+                return added;
+            });
         }
         catch (UsernameTakenException) {
             // A concurrent registration claimed the name between the check above and the insert.
@@ -91,10 +93,6 @@ public class AccountController(
     public async Task<ActionResult<SanitisedUser>> EditAccount([FromBody] AccountEditRequest[] edits) {
         User? target = await HttpContext.User.GetUser(userRepo);
         if (target == null) return Unauthorized();
-
-        bool passwordChanged = edits.Any(e => e.Field.ToLower() == "password");
-        if (passwordChanged && !HttpContext.User.IsUser())
-            return Forbid();
 
         Dictionary<string, string> t = LocalisationHandler.GetTranslations(
             LocalisationHandler.GetPreferredLanguageOrDefault(Request, target));
@@ -138,19 +136,6 @@ public class AccountController(
         }
 
         SanitisedUser result = await SanitisedUser.Create(newUser, scopes);
-
-        // A new password ends the sessions the old one could have leaked into. After the save, so a
-        // rejected edit does not sign anyone out for nothing.
-        if (passwordChanged) {
-            DateTime cutoff = SessionsController.RevocationCutoff();
-            await userRepo.RevokeTokensIssuedBefore(newUser.Id, cutoff);
-            cache.Remove(SerbleAuthenticationHandler.AccountStateCachePrefix + newUser.Id);
-            // The caller's own token is among those retired, so replace it rather than strand them.
-            result.ReplacementToken = tokens.GenerateLoginToken(newUser.Id, cutoff);
-            logger.LogInformation("Password changed for {UserId}; tokens issued before {Cutoff:o} revoked",
-                newUser.Id, cutoff);
-        }
-
         return result;
     }
 }

@@ -25,7 +25,7 @@ public class BasicAuthorizationHeader {
     /// <returns>The password as specified in the header</returns>
     public string GetPassword() {
         string[] data = Authorization.Split(' ');
-        return SerbleUtils.Base64Decode(data[1]).Split(':')[1];
+        return SerbleUtils.Base64Decode(data[1]).Split(':', 2)[1];
     }
     
     /// <summary>

@@ -216,35 +216,36 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         }
     }
     
-    /// <summary>
-    /// How long the token handed out between the password step and the MFA step is valid. It is half
-    /// of a login, so it only has to outlive someone reaching for their authenticator app; anything
-    /// longer is a second-factor bypass for whoever captures one.
-    /// </summary>
-    public static readonly TimeSpan FirstStepLoginTokenLifetime = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan ReauthTokenLifetime = TimeSpan.FromMinutes(10);
 
-    // First Step Login Token (To confirm user logged in and is awaiting MFA verification)
+    // Reauth Token (proof of a recently completed sign-in flow, required for credential changes)
     // Claims:
     // - userid
-    public string GenerateFirstStepLoginToken(string userId) {
+    public string GenerateReauthToken(string userId, DateTime? issuedAt = null, DateTime? expiresAt = null) {
         Dictionary<string, string> claims = new() {
             { "userid", userId },
-            { "type", "first-step-login" }
+            { "type", "reauth" }
         };
-        return GenerateToken(claims, FirstStepLoginTokenLifetime);
+        return GenerateToken(claims, ReauthTokenLifetime, issuedAt: issuedAt, expiresAt: expiresAt);
     }
-    
-    public bool ValidateFirstStepLoginToken(string token, out string? userId) {
-        userId = null!;
+
+    public bool ValidateReauthToken(string token, out string? userId, out DateTime? issuedAt, out DateTime expiresAt) {
+        userId = null;
+        issuedAt = null;
+        expiresAt = default;
         try {
             if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
                 logger.LogDebug(validationFailMsg);
                 return false;
             }
-            claims.ThrowIfNull();
             if (!claims!.TryGetValue("userid", out userId)
-                || !claims.TryGetValue("type", out string? type)) return false;
-            return type == "first-step-login";
+                || !claims.TryGetValue("type", out string? type)
+                || type != "reauth"
+                || !claims.TryGetValue(JwtRegisteredClaimNames.Exp, out string? rawExp)
+                || !long.TryParse(rawExp, NumberStyles.Integer, CultureInfo.InvariantCulture, out long exp)) return false;
+            issuedAt = ReadIssuedAt(claims);
+            expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp).UtcDateTime;
+            return true;
         }
         catch (Exception e) {
             logger.LogDebug("Token validation failed: " + e);
@@ -282,8 +283,9 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     /// What to stamp as the token's issue time, or null for now. Pass a revocation cut-off set by the
     /// same request: a token exactly as old as the cut-off is the one thing it does not reject.
     /// </param>
+    /// <param name="expiresAt">Overrides <paramref name="lifetime"/>.</param>
     private string GenerateToken(Dictionary<string, string> claims, TimeSpan lifetime, string? secret = null,
-        DateTime? issuedAt = null) {
+        DateTime? issuedAt = null, DateTime? expiresAt = null) {
         string mySecret = secret ?? settings.Value.Secret;
         SymmetricSecurityKey securityKey = new(Encoding.ASCII.GetBytes(mySecret));
         JwtSecurityTokenHandler tokenHandler = new();
@@ -298,7 +300,7 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
             // Set explicitly: revocation falls back to this for tokens predating iat_ms.
             IssuedAt = now,
             NotBefore = now,
-            Expires = now.Add(lifetime),
+            Expires = expiresAt ?? now.Add(lifetime),
             Issuer = settings.Value.Issuer,
             Audience = settings.Value.Audience,
             SigningCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature),

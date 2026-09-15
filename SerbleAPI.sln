@@ -2,15 +2,44 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerbleAPI", "SerbleAPI.csproj", "{7823C970-8222-4C7D-B410-0932FD8DA0A1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SerbleAPI.Tests", "SerbleAPI.Tests\SerbleAPI.Tests.csproj", "{FD63B487-EAA6-4817-845A-9DD10EF338BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|x64.Build.0 = Debug|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Debug|x86.Build.0 = Debug|Any CPU
 		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|x64.ActiveCfg = Release|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|x64.Build.0 = Release|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|x86.ActiveCfg = Release|Any CPU
+		{7823C970-8222-4C7D-B410-0932FD8DA0A1}.Release|x86.Build.0 = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|x64.Build.0 = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{FD63B487-EAA6-4817-845A-9DD10EF338BF}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal

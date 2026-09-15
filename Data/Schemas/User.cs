@@ -1,6 +1,3 @@
-using System.Text;
-using OtpNet;
-using QRCoder;
 using SerbleAPI.Repositories;
 using Stripe;
 
@@ -13,18 +10,11 @@ public class User {
     public string Email { get; set; }
     public bool VerifiedEmail { get; set; }
     /// <summary>
-    /// Password + Salt, unless they registered before this was added then (salt is null): Password
-    /// </summary>
-    public string PasswordHash { get; set; }
-    /// <summary>
     /// 0=Disabled Account 1=Normal, 2=Admin
     /// </summary>
     public int PermLevel { get; set; }
     public string? StripeCustomerId { get; set; }
     public string? Language { get; set; }
-    public bool TotpEnabled { get; set; }
-    public string? TotpSecret { get; set; }  // 128 bytes
-    public string? PasswordSalt { get; set; }  // 64 bytes, null for people who registered before this was added
     public DateTime DateCreated { get; set; }
     public DateTime? LastLogin { get; set; }
 
@@ -34,12 +24,6 @@ public class User {
     /// loaded before a sign-out would write the old value back and restore the retired tokens.
     /// </summary>
     public DateTime? TokensValidFrom { get; set; }
-
-    /// <summary>
-    /// See <see cref="Models.DbUser.LastTotpCounter"/>. Advance it only through
-    /// <see cref="IUserRepository.TryConsumeTotpCounter"/>, for the same reason as above.
-    /// </summary>
-    public long? LastTotpCounter { get; set; }
 
     private AuthorizedApp[]? _obtainedAuthedApps;
     private AuthorizedApp[]? _originalAuthedApps;
@@ -52,11 +36,9 @@ public class User {
         Id = "";
         Username = "";
         Email = "";
-        PasswordHash = "";
         PermLevel = 0;
         Language = "eng";
         VerifiedEmail = false;
-        TotpEnabled = false;
         _originalAuthedApps = [];
         StripeCustomerId = null;
     }
@@ -65,10 +47,6 @@ public class User {
         if (_obtainedAuthedApps != null) return _obtainedAuthedApps;
         await ObtainAuthorizedApps();
         return _obtainedAuthedApps!;
-    }
-    
-    public bool CheckPassword(string password) {
-        return PasswordHash == (password + (PasswordSalt ?? "")).Sha256Hash();
     }
     
     /// <summary>
@@ -141,42 +119,7 @@ public class User {
         }
     }
     
-    /// <summary>
-    /// Whether <paramref name="code"/> is a valid TOTP code that has not already been used. The
-    /// matched step is recorded and anything at or below it refused, so a code seen in transit
-    /// cannot be replayed within the window. A code from the next step therefore invalidates the
-    /// current one.
-    /// </summary>
-    public async Task<bool> ValidateTotp(string code) {
-        if (TotpSecret == null) {
-            TotpSecret = SerbleUtils.RandomString(128);
-            await RegisterChanges();
-        }
-        
-        byte[] secretBytes = Encoding.UTF8.GetBytes(TotpSecret);
-        Totp totp = new(secretBytes);
-        if (!totp.VerifyTotp(code, out long matchedStep, new VerificationWindow(1, 1))) return false;
-
-        if (!await _userRepo!.TryConsumeTotpCounter(Id, matchedStep)) return false;
-        LastTotpCounter = matchedStep;
-        return true;
-    }
-
-    public async Task<byte[]?> GetTotpQrCode() {
-        if (TotpSecret == null) {
-            TotpSecret = SerbleUtils.RandomString(128);
-            await RegisterChanges();
-        }
-        string uriString = GetTotpUri();
-        QRCodeGenerator qrGenerator = new();
-        QRCodeData qrCodeData = qrGenerator.CreateQrCode(uriString, QRCodeGenerator.ECCLevel.Q);
-        BitmapByteQRCode qrCode = new(qrCodeData);
-        return qrCode.GetGraphic(1);
-    }
-
-    public string GetTotpUri() {
-        return new OtpUri(OtpType.Totp, Encoding.UTF8.GetBytes(TotpSecret!), Username, "Serble").ToString()!;
-    }
+    public Task<bool> IsTotpInUse() => _userRepo!.IsTotpInUse(Id);
 
     public bool IsAdmin() => PermLevel == 2;
 

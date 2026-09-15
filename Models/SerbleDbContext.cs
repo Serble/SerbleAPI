@@ -25,6 +25,9 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbAppApiKey> AppApiKeys { get; set; }
     public virtual DbSet<DbUserNote> UserNotes { get; set; }
     public virtual DbSet<DbUserPasskey> UserPasskeys { get; set; }
+    public virtual DbSet<DbUserCredential> UserCredentials { get; set; }
+    public virtual DbSet<DbUserLoginFlow> UserLoginFlows { get; set; }
+    public virtual DbSet<DbLoginSession> LoginSessions { get; set; }
     public virtual DbSet<DbGroup> Groups { get; set; }
     public virtual DbSet<DbUserGroup> UserGroups { get; set; }
     public virtual DbSet<DbAppGroupRule> AppGroupRules { get; set; }
@@ -102,6 +105,18 @@ public class SerbleDbContext : DbContext {
             .HasOne(d => d.WebhookNavigation)
             .WithMany()
             .HasForeignKey(d => d.WebhookId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DbUserPasskey>()
+            .HasOne(p => p.CredentialNavigation)
+            .WithMany()
+            .HasForeignKey(p => p.UserCredentialId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DbLoginSession>()
+            .HasOne(s => s.UserNavigation)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -26,6 +26,9 @@ public class DbUser {
     [StringLength(255)]  // by standard, emails can be up to 254 characters long
     public string? Email { get; set; }
     
+    // Password, PasswordSalt, TotpEnabled, TotpSecret and LastTotpCounter are superseded by
+    // UserCredentials and are no longer read. They remain until a later migration drops them.
+
     [StringLength(64)]
     public string? Password { get; set; }
     
@@ -64,10 +67,5 @@ public class DbUser {
     /// </summary>
     public DateTime? TokensValidFrom { get; set; }
 
-    /// <summary>
-    /// The highest TOTP time step already accepted for this account, or null if none has been.
-    /// Refusing anything at or below it makes each code usable exactly once, rather than replayable
-    /// for as long as the verification window accepts it.
-    /// </summary>
     public long? LastTotpCounter { get; set; }
 }

@@ -27,15 +27,15 @@ public class SerbleCorsMiddleware(
     IOptions<PasskeySettings> passkeySettings,
     IActionDescriptorCollectionProvider descriptors) {
 
-    private const string PasskeyPathPrefix = "/api/v1/auth/passkey";
-    private const string AllowedHeaders = "serbleauth, Content-Type, authorization";
+    private static readonly string[] PasskeyPathPrefixes = ["/api/v1/auth/passkey", "/api/v1/auth/login/passkey"];
+    private const string AllowedHeaders = "serbleauth, Content-Type, authorization, serble-reauth";
     private const string AllowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
 
     public Task InvokeAsync(HttpContext context) {
         string path   = context.Request.Path.Value ?? "/";
         string? origin = context.Request.Headers.Origin;
 
-        bool isPasskeyPath = path.StartsWith(PasskeyPathPrefix, StringComparison.OrdinalIgnoreCase);
+        bool isPasskeyPath = PasskeyPathPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
         ApplyCorsHeaders(context.Response, origin, isPasskeyPath);
 

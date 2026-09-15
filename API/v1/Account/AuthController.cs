@@ -1,41 +1,25 @@
 using SerbleAPI.Config;
-using System.Text;
 using Fido2NetLib;
-using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using SerbleAPI.Data;
 using SerbleAPI.Data.ApiDataSchemas;
 using SerbleAPI.Data.Schemas;
-using SerbleAPI.Repositories;
 using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Account;
 
+/// <summary>The original sign-in endpoints, run on top of <see cref="ILoginSessionService"/>.</summary>
 [ApiController]
 [Route("api/v1/auth")]
 [AllowAnonymous]
 [RateLimit(RateLimitTiers.Auth)]
-public class AuthController(
-    IFido2 fido,
-    ILogger<AuthController> logger,
-    ITokenService tokens,
-    IUserRepository userRepo,
-    IPasskeyRepository passkeyRepo,
-    IMemoryCache cache) : ControllerManager {
-
-    private static readonly MemoryCacheEntryOptions ChallengeExpiry =
-        new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
-
-    private async Task<string> GenerateLoginTokenAndRecordLogin(string userId) {
-        await userRepo.SetLastLogin(userId, DateTime.UtcNow);
-        return tokens.GenerateLoginToken(userId);
-    }
+public class AuthController(ILoginSessionService login) : ControllerManager {
 
     [HttpGet("")]
     [HttpPost("password")]
-    public async Task<IActionResult> PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader) {
+    public async Task<IActionResult> PasswordAuth([FromHeader] BasicAuthorizationHeader authorizationHeader,
+        CancellationToken cancellationToken) {
         if (authorizationHeader.IsNull()) return BadRequest("Authorization header is missing");
         if (!authorizationHeader.IsValid()) return BadRequest("Authorization header is invalid");
 
@@ -43,20 +27,24 @@ public class AuthController(
         string password = authorizationHeader.GetPassword();
         if (password.Length > 256) return BadRequest("Password cannot be longer than 256 characters");
 
-        User? user = await userRepo.GetUserFromName(username);
-        if (user == null) return Unauthorized();
-        if (!user.CheckPassword(password)) return Unauthorized();
-        // Checked after the password so that a disabled account is not distinguishable from a wrong
-        // password by an unauthenticated caller.
-        if (user.IsDisabled()) return Unauthorized();
+        LoginStarted? started = await login.StartLogin(username);
+        if (started == null) return Unauthorized();
 
-        if (user.TotpEnabled) {
-            string mfaToken = tokens.GenerateFirstStepLoginToken(user.Id);
-            return Ok(new { mfa_token = mfaToken, success = true, mfa_required = true });
+        LoginStepResult result = await login.Password(started.Handle, password, null, LoginPurpose.Login, cancellationToken);
+        switch (result.Outcome) {
+            case LoginStepOutcome.Complete:
+                return Ok(new { token = result.Token, success = true, mfa_required = false });
+            case LoginStepOutcome.Continue when (result.Methods & CredentialTypes.Bit(CredentialType.Totp)) != 0:
+                return Ok(new { mfa_token = result.Handle, success = true, mfa_required = true });
+            case LoginStepOutcome.Continue:
+                await login.Cancel(started.Handle);
+                return Unauthorized("This account requires a sign-in method this endpoint does not support");
+            case LoginStepOutcome.RateLimited:
+                return TooManyRequests(result.RetryAfter, "Too many attempts. Try again later.");
+            default:
+                await login.Cancel(started.Handle);
+                return Unauthorized();
         }
-
-        string token = await GenerateLoginTokenAndRecordLogin(user.Id);
-        return Ok(new { token, success = true, mfa_required = false });
     }
 
     [HttpPost("passkey/assertion")]
@@ -64,87 +52,30 @@ public class AuthController(
         [FromBody] AuthenticatorAssertionRawResponse clientResponse,
         [FromQuery] string challengeId,
         CancellationToken cancellationToken) {
-        try {
-            string cacheKey = $"fido2:assertion:{challengeId}";
-            if (!cache.TryGetValue(cacheKey, out string? jsonOptions) || jsonOptions == null)
-                return BadRequest("Challenge not found or expired. Request new assertion options.");
-
-            // Consume the challenge — one-time use only.
-            cache.Remove(cacheKey);
-
-            AssertionOptions? options = AssertionOptions.FromJson(jsonOptions);
-
-            SavedPasskey? creds = await passkeyRepo.GetPasskey(clientResponse.Id);
-            if (creds == null) return BadRequest("Unknown passkey");
-
-            IsUserHandleOwnerOfCredentialIdAsync callback = async (args, _) => {
-                string handle = Encoding.UTF8.GetString(args.UserHandle);
-                SavedPasskey[] passkeys = await passkeyRepo.GetUsersPasskeys(handle);
-                return passkeys.Any(c => c.Descriptor!.Id.SequenceEqual(args.CredentialId));
-            };
-
-            VerifyAssertionResult res = await fido.MakeAssertionAsync(
-                clientResponse, options,
-                creds.PublicKey!, creds.DevicePublicKeys ?? [], creds.SignCount,
-                callback, cancellationToken: cancellationToken);
-
-            await passkeyRepo.SetPasskeySignCount(res.CredentialId, (int)res.SignCount);
-
-            if (res.DevicePublicKey is not null) {
-                byte[][] updatedKeys = (creds.DevicePublicKeys ?? []).Append(res.DevicePublicKey).ToArray();
-                await passkeyRepo.UpdatePasskeyDevicePublicKeys(res.CredentialId, updatedKeys);
-            }
-
-            // The assertion proves possession of the passkey, which says nothing about whether the
-            // account it belongs to is still allowed in.
-            User? owner = await userRepo.GetUser(creds.OwnerId);
-            if (owner == null || owner.IsDisabled()) return Unauthorized();
-
-            string token = await GenerateLoginTokenAndRecordLogin(creds.OwnerId);
-            return Ok(new { token, success = true });
-        }
-        catch (Exception e) {
-            logger.LogDebug("Passkey assertion failed: " + e.Message);
-            return BadRequest("Passkey assertion failed: " + e.Message);
-        }
+        LoginStepResult result = await login.Passkey(challengeId, clientResponse, null, LoginPurpose.Login, cancellationToken);
+        return result.Outcome switch {
+            LoginStepOutcome.Complete        => Ok(new { token = result.Token, success = true }),
+            LoginStepOutcome.Continue        => Unauthorized("Additional verification required"),
+            LoginStepOutcome.WrongCredential => BadRequest("Passkey assertion failed"),
+            LoginStepOutcome.RateLimited     => TooManyRequests(result.RetryAfter, "Too many attempts. Try again later."),
+            _ => BadRequest("Challenge not found or expired. Request new assertion options.")
+        };
     }
 
     [HttpGet("passkey/assertionOptions")]
-    public Task<ActionResult> AssertionOptionsGet() => AssertionOptionsPost(null);
+    public Task<IActionResult> AssertionOptionsGet() => AssertionOptionsPost(null);
 
     [HttpPost("passkey/assertionOptions")]
-    public async Task<ActionResult> AssertionOptionsPost([FromForm] string? username) {
-        try {
-            List<PublicKeyCredentialDescriptor> existingCredentials = [];
-
-            if (!string.IsNullOrEmpty(username)) {
-                User? user = await userRepo.GetUserFromName(username);
-                if (user == null) throw new Exception("Invalid user");
-                existingCredentials = (await passkeyRepo.GetUsersPasskeys(user.Id))
-                    .Select(k => k.Descriptor!)
-                    .ToList();
-            }
-
-            AuthenticationExtensionsClientInputs exts = new() {
-                Extensions             = true,
-                UserVerificationMethod = true,
-                DevicePubKey           = new AuthenticationExtensionsDevicePublicKeyInputs()
-            };
-
-            AssertionOptions options = fido.GetAssertionOptions(
-                existingCredentials, UserVerificationRequirement.Required, exts);
-
-            // Store assertion challenge in cache, return ID to client.
-            string challengeId = Guid.NewGuid().ToString("N");
-            cache.Set($"fido2:assertion:{challengeId}", options.ToJson(), ChallengeExpiry);
-
-            return Json(new {
-                challengeId,
-                options
-            });
+    public async Task<IActionResult> AssertionOptionsPost([FromForm] string? username) {
+        string? handle = null;
+        if (!string.IsNullOrEmpty(username)) {
+            LoginStarted? started = await login.StartLogin(username);
+            if (started == null) return BadRequest("Invalid user");
+            handle = started.Handle;
         }
-        catch (Exception e) {
-            return BadRequest(e.Message);
-        }
+
+        PasskeyOptionsResult? result = await login.PasskeyOptions(handle, null, LoginPurpose.Login);
+        if (result == null) return BadRequest("A passkey cannot be used to sign in to this account");
+        return Json(new { challengeId = result.Handle, options = result.Options });
     }
 }

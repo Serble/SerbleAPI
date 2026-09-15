@@ -20,4 +20,9 @@ public class ControllerManager : Controller {
             ? $"New request from: {ipStr} ({header})"
             : $"New request from: {ipStr} (Unknown user agent)");
     }
+
+    protected ObjectResult TooManyRequests(TimeSpan retryAfter, object? body = null) {
+        Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+        return StatusCode(StatusCodes.Status429TooManyRequests, body ?? new { error = "rate_limited" });
+    }
 }

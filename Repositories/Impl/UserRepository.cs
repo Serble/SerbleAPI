@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Models;
 
@@ -13,17 +14,12 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         Username        = r.Username        ?? "",
         Email           = r.Email           ?? "",
         VerifiedEmail   = r.VerifiedEmail,
-        PasswordHash    = r.Password        ?? "",
         PermLevel       = r.PermLevel,
         StripeCustomerId = r.SubscriptionId,
         Language        = r.Language,
-        TotpEnabled     = r.TotpEnabled,
-        TotpSecret      = r.TotpSecret,
-        PasswordSalt    = r.PasswordSalt,
         DateCreated     = r.DateCreated,
         LastLogin       = r.LastLogin,
-        TokensValidFrom = r.TokensValidFrom,
-        LastTotpCounter = r.LastTotpCounter
+        TokensValidFrom = r.TokensValidFrom
     };
     
     private User? MapWithRepos(DbUser? r) {
@@ -65,13 +61,9 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             Username       = user.Username,
             Email          = user.Email,
             VerifiedEmail  = user.VerifiedEmail,
-            Password       = user.PasswordHash,
             PermLevel      = user.PermLevel,
             SubscriptionId = user.StripeCustomerId,
             Language       = user.Language,
-            TotpEnabled    = user.TotpEnabled,
-            TotpSecret     = user.TotpSecret,
-            PasswordSalt   = user.PasswordSalt,
             DateCreated    = user.DateCreated,
             LastLogin      = user.LastLogin
         });
@@ -85,17 +77,12 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
         row.Username       = user.Username;
         row.Email          = user.Email;
         row.VerifiedEmail  = user.VerifiedEmail;
-        row.Password       = user.PasswordHash;
         row.PermLevel      = user.PermLevel;
         row.SubscriptionId = user.StripeCustomerId;
         row.Language       = user.Language;
-        row.TotpEnabled    = user.TotpEnabled;
-        row.TotpSecret     = user.TotpSecret;
-        row.PasswordSalt   = user.PasswordSalt;
         row.LastLogin      = user.LastLogin;
-        // TokensValidFrom and LastTotpCounter are absent on purpose: both only move forwards, and
-        // writing them from a User loaded earlier would move them back, un-revoking tokens or making
-        // a spent TOTP code usable. RevokeTokensIssuedBefore and TryConsumeTotpCounter write them.
+        // TokensValidFrom only moves forwards through RevokeTokensIssuedBefore; writing it from a User
+        // loaded earlier could un-revoke tokens.
         await SaveUsernameWrite(user.Username, user.Id);
     }
 
@@ -146,11 +133,15 @@ public class UserRepository(SerbleDbContext db) : IUserRepository {
             .Where(u => u.Id == userId)
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.TokensValidFrom, validFrom));
 
-    public async Task<bool> TryConsumeTotpCounter(string userId, long counter) {
-        int affected = await db.Users
-            .Where(u => u.Id == userId && (u.LastTotpCounter == null || u.LastTotpCounter < counter))
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastTotpCounter, counter));
-        return affected > 0;
+    public async Task<bool> IsTotpInUse(string userId) {
+        int bit = CredentialTypes.Bit(CredentialType.Totp);
+        bool active = await db.UserCredentials.AnyAsync(c => c.UserId == userId
+                                                            && c.Type == (int)CredentialType.Totp
+                                                            && c.Status == (int)CredentialStatus.Active);
+        if (!active) return false;
+
+        int[] flows = await db.UserLoginFlows.Where(f => f.UserId == userId).Select(f => f.MethodMask).ToArrayAsync();
+        return flows.Any(f => (f & bit) != 0 && !LoginFlowRules.IsRedundant(flows, f));
     }
 
     public async Task DeleteUser(string userId) {

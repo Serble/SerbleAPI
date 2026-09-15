@@ -21,12 +21,8 @@ public interface IUserRepository {
     /// </summary>
     Task RevokeTokensIssuedBefore(string userId, DateTime validFrom);
 
-    /// <summary>
-    /// Claims TOTP step <paramref name="counter"/>, returning whether this caller got it. False means
-    /// the step was already used, directly or by a later one retiring it. The test and the write are
-    /// one statement, so concurrent attempts with the same code cannot both pass.
-    /// </summary>
-    Task<bool> TryConsumeTotpCounter(string userId, long counter);
+    /// <summary>Whether the user has an active TOTP credential that a sign-in flow in use requires.</summary>
+    Task<bool> IsTotpInUse(string userId);
 
     Task DeleteUser(string userId);
     Task<long> CountUsers();

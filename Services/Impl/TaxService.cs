@@ -26,7 +26,7 @@ namespace SerbleAPI.Services.Impl;
 /// cursor onto the <see cref="DbTaxCycle"/> row, and the next pass resumes from there instead of
 /// restarting, so no account is charged twice and none is skipped.</para>
 ///
-/// <para><b>Concurrency.</b> Two layers. <see cref="TaxRunLock"/> gives coarse server-wide mutual
+/// <para><b>Concurrency.</b> Two layers. <see cref="DbAdvisoryLock"/> gives coarse server-wide mutual
 /// exclusion so replicas do not collect concurrently; the unique index on
 /// <see cref="DbTaxCycle.ScheduledForUtc"/> is the hard guarantee that a given cycle boundary is
 /// settled at most once, and holds even if the advisory lock is unavailable.</para>
@@ -37,6 +37,7 @@ namespace SerbleAPI.Services.Impl;
 /// collection holds row locks, and a hanging app endpoint must not be able to hold them with it.</para>
 /// </summary>
 public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxService {
+    private const string TaxRunLockName = "serble.economy.tax.run";
     private const string LastRunKey = "economy.tax._last_run_utc";
     private const string AppTargetPrefix = "economy.tax.target_balance.";
 
@@ -160,7 +161,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
             return ToRunResult(BlockedPreview(settings, "BOSS app id is not configured."), null);
         }
 
-        await using TaxRunLock runLock = await TaxRunLock.TryAcquire(db, cancellationToken);
+        await using DbAdvisoryLock runLock = await DbAdvisoryLock.TryAcquire(db, TaxRunLockName, cancellationToken);
         if (!runLock.Acquired) {
             return ToRunResult(BlockedPreview(settings, "A tax run is already in progress."), null);
         }
@@ -190,7 +191,7 @@ public class TaxService(SerbleDbContext db, ILogger<TaxService> logger) : ITaxSe
     }
 
     public async Task RunDueTaxCycles(CancellationToken cancellationToken = default) {
-        await using TaxRunLock runLock = await TaxRunLock.TryAcquire(db, cancellationToken);
+        await using DbAdvisoryLock runLock = await DbAdvisoryLock.TryAcquire(db, TaxRunLockName, cancellationToken);
         if (!runLock.Acquired) return;
 
         // Finishing an interrupted run always takes priority, and happens even when the scheduler

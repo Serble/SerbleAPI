@@ -41,7 +41,13 @@ public class DbUserPasskey {
     public string? DevicePublicKeys { get; set; }
     
     public DateTime? CreatedAt { get; set; }
-    
+
+    [StringLength(64)]
+    [ForeignKey(nameof(CredentialNavigation))]
+    public string UserCredentialId { get; set; } = null!;
+
     // navigation properties
     public DbUser OwnerNavigation { get; set; } = null!;
+
+    public DbUserCredential CredentialNavigation { get; set; } = null!;
 }

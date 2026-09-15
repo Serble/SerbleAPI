@@ -8,13 +8,26 @@ using Microsoft.Extensions.Caching.Memory;
 using SerbleAPI.Authentication;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
+using SerbleAPI.Services;
 
 namespace SerbleAPI.API.v1.Account;
 
 [ApiController]
 [Route("api/v1/auth/passkey")]
 [RateLimit(RateLimitTiers.Write)]
-public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRepository passkeyRepo, IMemoryCache cache) : ControllerManager {
+public class PasskeyController(
+    IFido2 fido,
+    IUserRepository userRepo,
+    IPasskeyRepository passkeyRepo,
+    ICredentialService credentials,
+    ITokenService tokens,
+    IMemoryCache cache) : ControllerManager {
+
+    public record CredentialBody(
+        string ChallengeId,
+        AuthenticatorAttestationRawResponse Attestation,
+        string? Name,
+        bool SignInAlone = false);
 
     // Challenge entries expire after 5 minutes — enough time to complete the
     // browser interaction without leaving stale data in memory indefinitely.
@@ -28,6 +41,7 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
         if (user == null) return Unauthorized();
         SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(user.Id);
         return Json(keys.Select(k => new {
+            id               = k.UserCredentialId,
             name             = k.Name,
             credentialId     = Convert.ToBase64String(k.CredentialId!),
             isBackupEligible = k.IsBackupEligible,
@@ -37,14 +51,21 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
 
     [HttpDelete("delete/{name}")]
     [Authorize(Policy = "UserOnly")]
+    [RequireReauth]
     public async Task<IActionResult> DeletePasskey(string name) {
         User? user = await HttpContext.User.GetUser(userRepo);
         if (user == null) return Unauthorized();
         SavedPasskey[] keys = await passkeyRepo.GetUsersPasskeys(user.Id);
         SavedPasskey? target = keys.FirstOrDefault(k => k.Name == name);
         if (target == null) return NotFound("Passkey not found");
-        await passkeyRepo.DeletePasskey(target.CredentialId!);
-        return Ok(new { success = true });
+
+        CredentialChangeResult result = await credentials.Delete(user.Id, target.UserCredentialId);
+        if (result.Status == CredentialChangeStatus.Conflict) return Conflict(result.Error);
+        if (result.Status != CredentialChangeStatus.Ok) return NotFound("Passkey not found");
+
+        CredentialOverview overview = await credentials.GetOverview(user.Id);
+        ReplacementTokens.Apply(overview, HttpContext, tokens, user.Id, result.RevokedAt);
+        return Ok(overview);
     }
 
     [HttpPatch("rename/{name}")]
@@ -57,13 +78,15 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
         SavedPasskey? target = keys.FirstOrDefault(k => k.Name == name);
         if (target == null) return NotFound("Passkey not found");
         if (keys.Any(k => k.Name == newName)) return Conflict("A passkey with that name already exists");
-        await passkeyRepo.SetPasskeyName(target.CredentialId!, newName);
+        CredentialChangeResult result = await credentials.Rename(user.Id, target.UserCredentialId, newName);
+        if (result.Status == CredentialChangeStatus.Invalid) return BadRequest(result.Error);
         return Ok(new { success = true });
     }
 
     [RateLimit(RateLimitTiers.Auth)]
     [HttpPost("credentialoptions")]
     [Authorize(Policy = "UserOnly")]
+    [RequireReauth]
     public async Task<IActionResult> MakeCredentialOptions(
         [FromForm] string  attType,
         [FromForm] string? authType,
@@ -102,10 +125,7 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
             fidoUser, excludeCreds, authenticatorSelection,
             attType.ToEnum<AttestationConveyancePreference>(), exts);
 
-        // Store the challenge in the in-memory cache under a random ID and
-        // return that ID to the client.  The client sends it back as a query
-        // parameter on the follow-up POST /credential request.  This avoids
-        // any reliance on session cookies, which are unreliable across origins.
+        // The client sends this ID back in the body of POST /credential.
         string challengeId = Guid.NewGuid().ToString("N");
         cache.Set($"fido2:attestation:{challengeId}", options.ToJson(), ChallengeExpiry);
 
@@ -114,33 +134,34 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
 
     [RateLimit(RateLimitTiers.Auth)]
     [HttpPost("credential")]
-    [AllowAnonymous]
-    public async Task<IActionResult> MakeCredential(
-        [FromBody] AuthenticatorAttestationRawResponse attestationResponse,
-        [FromQuery] string challengeId,
-        CancellationToken cancellationToken) {
+    [Authorize(Policy = "UserOnly")]
+    public async Task<IActionResult> MakeCredential([FromBody] CredentialBody body, CancellationToken cancellationToken) {
+        string userId = HttpContext.User.GetUserId()!;
+        if (body.Name is { Length: > 255 }) return BadRequest("Name cannot be longer than 255 characters");
         try {
-            string cacheKey = $"fido2:attestation:{challengeId}";
+            string cacheKey = $"fido2:attestation:{body.ChallengeId}";
             if (!cache.TryGetValue(cacheKey, out string? jsonOptions) || jsonOptions == null)
+                return BadRequest("Challenge not found or expired. Request new credential options.");
+
+            CredentialCreateOptions options = CredentialCreateOptions.FromJson(jsonOptions);
+            // The options were issued to one account; only that account may complete them.
+            if (Encoding.UTF8.GetString(options.User.Id) != userId)
                 return BadRequest("Challenge not found or expired. Request new credential options.");
 
             // Consume the challenge — one-time use only.
             cache.Remove(cacheKey);
 
-            CredentialCreateOptions? options = CredentialCreateOptions.FromJson(jsonOptions);
-
             IsCredentialIdUniqueToUserAsyncDelegate callback = async (args, _) => {
-                string? userId = await passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId);
-                return userId == null;
+                string? existingOwner = await passkeyRepo.GetUserIdFromPasskeyId(args.CredentialId);
+                return existingOwner == null;
             };
 
             MakeNewCredentialResult success = await fido.MakeNewCredentialAsync(
-                attestationResponse, options, callback, cancellationToken: cancellationToken);
+                body.Attestation, options, callback, cancellationToken: cancellationToken);
 
-            string userId = Encoding.UTF8.GetString(success.Result!.User.Id);
             SavedPasskey cred = new() {
                 OwnerId                   = userId,
-                Name                      = "Passkey " + Guid.NewGuid(),
+                Name                      = string.IsNullOrWhiteSpace(body.Name) ? "Passkey " + Guid.NewGuid() : body.Name.Trim(),
                 CredentialId              = success.Result!.Id,
                 PublicKey                 = success.Result.PublicKey,
                 AaGuid                    = success.Result.AaGuid,
@@ -158,7 +179,12 @@ public class PasskeyController(IFido2 fido, IUserRepository userRepo, IPasskeyRe
             };
 
             await passkeyRepo.CreatePasskey(cred);
-            return Json(new { success = true, credentialId = Convert.ToBase64String(cred.CredentialId!) });
+            if (body.SignInAlone) await credentials.AllowPasskeyAlone(userId);
+            return Json(new {
+                success      = true,
+                id           = cred.UserCredentialId,
+                credentialId = Convert.ToBase64String(cred.CredentialId!)
+            });
         }
         catch (Exception e) {
             return BadRequest("Failed to create credentials: " + e.Message);

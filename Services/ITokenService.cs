@@ -27,8 +27,12 @@ public interface ITokenService {
     string GenerateEmailConfirmationToken(string userId, string email);
     bool ValidateEmailConfirmationToken(string token, out string? userId, out string email);
 
-    string GenerateFirstStepLoginToken(string userId);
-    bool ValidateFirstStepLoginToken(string token, out string? userId);
+    /// <summary>
+    /// Mints proof that the user just completed a sign-in flow. <paramref name="issuedAt"/> and
+    /// <paramref name="expiresAt"/> let a replacement keep the original expiry past a revocation cut-off.
+    /// </summary>
+    string GenerateReauthToken(string userId, DateTime? issuedAt = null, DateTime? expiresAt = null);
+    bool ValidateReauthToken(string token, out string? userId, out DateTime? issuedAt, out DateTime expiresAt);
 
     string GenerateCheckoutSuccessToken(string productId, string secret);
 }
