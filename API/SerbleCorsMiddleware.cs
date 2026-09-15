@@ -12,7 +12,7 @@ namespace SerbleAPI.API;
 /// CORS policy:
 ///   • Passkey routes (<c>api/v1/auth/passkey/**</c>): reflects the request
 ///     <c>Origin</c> back only when it is in <see cref="PasskeySettings.AllowedOrigins"/>.
-///     Allowed headers: serbleauth, Content-Type, authorization.
+///     Allowed headers: serbleauth, Content-Type, authorization, serble-reauth, serble-device.
 ///     No origin reflected (= browser-blocked) when the origin is not in the list.
 ///   • All other routes: <c>Access-Control-Allow-Origin: *</c> (open).
 ///     All headers and methods allowed.
@@ -28,7 +28,7 @@ public class SerbleCorsMiddleware(
     IActionDescriptorCollectionProvider descriptors) {
 
     private static readonly string[] PasskeyPathPrefixes = ["/api/v1/auth/passkey", "/api/v1/auth/login/passkey"];
-    private const string AllowedHeaders = "serbleauth, Content-Type, authorization, serble-reauth";
+    private const string AllowedHeaders = "serbleauth, Content-Type, authorization, serble-reauth, serble-device";
     private const string AllowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
 
     public Task InvokeAsync(HttpContext context) {

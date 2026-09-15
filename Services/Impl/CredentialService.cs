@@ -82,8 +82,7 @@ public class CredentialService(
     }
 
     public async Task<CredentialChangeResult> VerifyTotp(string userId, string credentialId, string code) {
-        RateLimitDecision limit = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity,
-            LoginSessionService.TotpLimitKey(userId));
+        RateLimitDecision limit = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity, "totp:" + userId);
         if (!limit.Allowed) return new CredentialChangeResult(CredentialChangeStatus.RateLimited, RetryAfter: limit.RetryAfter);
 
         UserCredential? credential = await credentials.GetCredential(userId, credentialId);

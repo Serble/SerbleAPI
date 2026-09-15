@@ -1,4 +1,4 @@
-using System.Text;
+using System.Security.Claims;
 using SerbleAPI.Authentication;
 using SerbleAPI.Services;
 
@@ -11,6 +11,10 @@ namespace SerbleAPI.API;
 /// it. Either alone is easy to walk around: an address limit falls to a botnet, and an account
 /// limit does nothing to someone trying a thousand account names.</para>
 ///
+/// <para>Only an authenticated account is charged. An account name an unauthenticated request merely
+/// claims is not, or anyone could spend that account's budget and lock its owner out; sign-in steps
+/// count guesses per account themselves (<see cref="Services.Auth.LoginAttempts"/>).</para>
+///
 /// <para>It runs after authentication so there is an account to charge, and before authorization
 /// so an over-limit caller is turned away before any handler work. Authentication is cheap for
 /// the routes that matter most: the login endpoint takes Basic credentials, which the
@@ -20,9 +24,6 @@ public class RateLimitMiddleware(
     RequestDelegate next,
     IRateLimitService limiter,
     ILogger<RateLimitMiddleware> logger) {
-
-    /// <summary>Cap on a login name used as a partition key, since the value is attacker-controlled.</summary>
-    private const int MaxIdentityLength = 128;
 
     public async Task InvokeAsync(HttpContext context) {
         Endpoint? endpoint = context.GetEndpoint();
@@ -42,7 +43,7 @@ public class RateLimitMiddleware(
 
         // Only charge the identity when the address still has room, or one refusal would cost two
         // permits and a throttled client would burn down its other budget as well.
-        if (decision.Allowed && ResolveIdentity(context) is { } identity) {
+        if (decision.Allowed && ResolveIdentity(context.User) is { } identity) {
             RateLimitDecision byIdentity = limiter.Check(rule.Tier, RateLimitScope.Identity, identity, rule.Cost);
 
             // Report whichever budget is closer to running out, so the headers describe the limit
@@ -71,35 +72,10 @@ public class RateLimitMiddleware(
         await WriteTooManyRequests(context, decision);
     }
 
-    private static string? ResolveIdentity(HttpContext context) {
-        if (context.User.GetUserId() is { } userId) return "user:" + userId;
-        if (context.User.GetAppId() is { } appId) return "app:" + appId;
-
-        // Not authenticated, so a Basic header means a login attempt. The name being attempted is
-        // the only account identifier available before the password is checked.
-        return BasicUsername(context.Request) is { } name ? "login:" + name : null;
-    }
-
-    private static string? BasicUsername(HttpRequest request) {
-        string? header = request.Headers.Authorization;
-        if (string.IsNullOrEmpty(header) || !header.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        try {
-            string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(header[6..].Trim()));
-            int separator = decoded.IndexOf(':');
-            string username = separator < 0 ? decoded : decoded[..separator];
-            if (username.Length == 0) return null;
-
-            // Usernames match case-insensitively elsewhere, so fold the case or the same account
-            // gets a fresh budget per capitalisation.
-            return username[..Math.Min(username.Length, MaxIdentityLength)].ToLowerInvariant();
-        }
-        catch (FormatException) {
-            // Not valid base64, so not a login attempt we can attribute. The address budget still
-            // applies and the endpoint will reject it on its own terms.
-            return null;
-        }
+    private static string? ResolveIdentity(ClaimsPrincipal user) {
+        if (user.GetUserId() is { } userId) return "user:" + userId;
+        if (user.GetAppId() is { } appId) return "app:" + appId;
+        return null;
     }
 
     private static void ApplyHeaders(HttpResponse response, RateLimitDecision decision) {

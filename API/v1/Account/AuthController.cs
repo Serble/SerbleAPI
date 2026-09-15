@@ -30,10 +30,11 @@ public class AuthController(ILoginSessionService login) : ControllerManager {
         LoginStarted? started = await login.StartLogin(username);
         if (started == null) return Unauthorized();
 
-        LoginStepResult result = await login.Password(started.Handle, password, null, LoginPurpose.Login, cancellationToken);
+        LoginStepResult result = await login.Password(started.Handle, password, null, CurrentLoginClient,
+            LoginPurpose.Login, cancellationToken);
         switch (result.Outcome) {
             case LoginStepOutcome.Complete:
-                return Ok(new { token = result.Token, success = true, mfa_required = false });
+                return Ok(new { token = result.Token, success = true, mfa_required = false, device_token = result.DeviceToken });
             case LoginStepOutcome.Continue when (result.Methods & CredentialTypes.Bit(CredentialType.Totp)) != 0:
                 return Ok(new { mfa_token = result.Handle, success = true, mfa_required = true });
             case LoginStepOutcome.Continue:
@@ -54,7 +55,7 @@ public class AuthController(ILoginSessionService login) : ControllerManager {
         CancellationToken cancellationToken) {
         LoginStepResult result = await login.Passkey(challengeId, clientResponse, null, LoginPurpose.Login, cancellationToken);
         return result.Outcome switch {
-            LoginStepOutcome.Complete        => Ok(new { token = result.Token, success = true }),
+            LoginStepOutcome.Complete        => Ok(new { token = result.Token, success = true, device_token = result.DeviceToken }),
             LoginStepOutcome.Continue        => Unauthorized("Additional verification required"),
             LoginStepOutcome.WrongCredential => BadRequest("Passkey assertion failed"),
             LoginStepOutcome.RateLimited     => TooManyRequests(result.RetryAfter, "Too many attempts. Try again later."),

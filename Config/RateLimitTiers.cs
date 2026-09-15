@@ -1,7 +1,7 @@
 namespace SerbleAPI.Config;
 
 /// <summary>
-/// The four rate limit tiers, grouped by what an overrun costs rather than by how the endpoint is
+/// The rate limit tiers, grouped by what an overrun costs rather than by how the endpoint is
 /// written. An endpoint picks one with <c>[RateLimit(...)]</c>; untagged endpoints are not limited.
 /// <list type="bullet">
 ///   <item><b>auth</b> — guessing wins something: passwords, TOTP codes, client secrets,
@@ -9,6 +9,10 @@ namespace SerbleAPI.Config;
 ///   <item><b>costly</b> — one request spends money or sends traffic on our behalf.</item>
 ///   <item><b>write</b> — durable state: coin movements, trades, notes, app registrations.</item>
 ///   <item><b>read</b> — public reads and the batch endpoints that amplify them.</item>
+///   <item><b>login</b> — guesses at one account's password or TOTP code, charged by the sign-in
+///   steps rather than by an attribute. Per-ip is one client against the account: a device it
+///   has signed in on before, otherwise an address. Per-identity is every other client against
+///   the account together, which bounds guessing spread over many addresses.</item>
 /// </list>
 /// </summary>
 public static class RateLimitTiers {
@@ -17,6 +21,7 @@ public static class RateLimitTiers {
     public const string Costly = "costly";
     public const string Write  = "write";
     public const string Read   = "read";
+    public const string Login  = "login";
 
     /// <summary>
     /// Built-in limits, used wherever configuration is silent. Per-address numbers are looser
@@ -45,7 +50,14 @@ public static class RateLimitTiers {
             [Read] = new(Read, true,
                 PerIp:       new(true, 300, TimeSpan.FromMinutes(1)),
                 PerIdentity: new(true, 300, TimeSpan.FromMinutes(1)),
-                Backoff:     new(true, TimeSpan.FromSeconds(10), 2, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)))
+                Backoff:     new(true, TimeSpan.FromSeconds(10), 2, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5))),
+
+            // With this backoff one address gets about 20 guesses in its first hour, so the shared
+            // budget sits above that: a single address cannot use it up and lock out the owner.
+            [Login] = new(Login, true,
+                PerIp:       new(true, 5,  TimeSpan.FromMinutes(1)),
+                PerIdentity: new(true, 30, TimeSpan.FromHours(1)),
+                Backoff:     new(true, TimeSpan.FromMinutes(1), 4, TimeSpan.FromHours(1), TimeSpan.FromHours(1)))
         };
 
     public static IReadOnlyCollection<string> All => Defaults.Keys;

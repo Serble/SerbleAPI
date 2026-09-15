@@ -1,3 +1,4 @@
+using System.Net;
 using Fido2NetLib;
 
 namespace SerbleAPI.Services;
@@ -20,13 +21,19 @@ public enum LoginStepOutcome {
 
 /// <param name="Methods">Bits of the methods that can be attempted next.</param>
 /// <param name="Token">A login token, or a reauth token for a reauth session.</param>
+/// <param name="DeviceToken">On completion, for the client to send with later sign-ins.</param>
 public sealed record LoginStepResult(
     LoginStepOutcome Outcome,
     string? Handle = null,
     int Methods = 0,
     string? Token = null,
     LoginPurpose Purpose = LoginPurpose.Login,
-    TimeSpan RetryAfter = default);
+    TimeSpan RetryAfter = default,
+    string? DeviceToken = null);
+
+/// <summary>Who is making a sign-in step, which decides whose attempt budget it spends.</summary>
+/// <param name="DeviceToken">The device token a completed sign-in gave this client, if it sent one.</param>
+public sealed record LoginClient(IPAddress? Address, string? DeviceToken);
 
 public sealed record LoginStarted(string Handle, int Methods, DateTime ExpiresAt);
 
@@ -43,10 +50,11 @@ public interface ILoginSessionService {
 
     Task<LoginStarted> StartReauth(string userId);
 
-    Task<LoginStepResult> Password(string handle, string password, string? callerUserId,
+    Task<LoginStepResult> Password(string handle, string password, string? callerUserId, LoginClient client,
         LoginPurpose? requiredPurpose = null, CancellationToken cancellationToken = default);
 
-    Task<LoginStepResult> Totp(string handle, string code, string? callerUserId, LoginPurpose? requiredPurpose = null);
+    Task<LoginStepResult> Totp(string handle, string code, string? callerUserId, LoginClient client,
+        LoginPurpose? requiredPurpose = null);
 
     /// <summary>Without a handle, starts a usernameless passkey sign-in. Null if a passkey cannot be used.</summary>
     Task<PasskeyOptionsResult?> PasskeyOptions(string? handle, string? callerUserId, LoginPurpose? requiredPurpose = null);

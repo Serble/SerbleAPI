@@ -11,6 +11,8 @@ namespace SerbleAPI.API.v1.Account;
 /// <summary>
 /// Sign-in and re-authentication. A session is started, then steps are completed until one of the
 /// account's sign-in flows is satisfied. Session handles travel in request bodies only.
+/// A completed session returns a <c>deviceToken</c>; sending it back in <see cref="ControllerManager.DeviceTokenHeader"/>
+/// keeps the client's attempts apart from anyone else's, so others' failures cannot lock it out.
 /// </summary>
 [ApiController]
 [Route("api/v1/auth/login")]
@@ -45,14 +47,15 @@ public class LoginController(ILoginSessionService login) : ControllerManager {
     [AllowAnonymous]
     public async Task<IActionResult> Password([FromBody] PasswordBody body, CancellationToken cancellationToken) {
         if (body.Password.Length > 256) return BadRequest("Password cannot be longer than 256 characters");
-        return StepResponse(await login.Password(body.LoginSession, body.Password, CallerUserId, cancellationToken: cancellationToken));
+        return StepResponse(await login.Password(body.LoginSession, body.Password, CallerUserId, CurrentLoginClient,
+            cancellationToken: cancellationToken));
     }
 
     [RateLimit(RateLimitTiers.Auth)]
     [HttpPost("totp")]
     [AllowAnonymous]
     public async Task<IActionResult> Totp([FromBody] TotpBody body) =>
-        StepResponse(await login.Totp(body.LoginSession, body.Code, CallerUserId));
+        StepResponse(await login.Totp(body.LoginSession, body.Code, CallerUserId, CurrentLoginClient));
 
     [RateLimit(RateLimitTiers.Write)]
     [HttpPost("passkey/options")]
@@ -89,8 +92,9 @@ public class LoginController(ILoginSessionService login) : ControllerManager {
             loginSession = result.Handle,
             methods      = CredentialTypes.Names(result.Methods)
         }),
-        LoginStepOutcome.Complete when result.Purpose == LoginPurpose.Reauth => Ok(new { complete = true, reauthToken = result.Token }),
-        LoginStepOutcome.Complete => Ok(new { complete = true, token = result.Token }),
+        LoginStepOutcome.Complete when result.Purpose == LoginPurpose.Reauth =>
+            Ok(new { complete = true, reauthToken = result.Token, deviceToken = result.DeviceToken }),
+        LoginStepOutcome.Complete => Ok(new { complete = true, token = result.Token, deviceToken = result.DeviceToken }),
         LoginStepOutcome.WrongCredential => Unauthorized(new {
             error        = "invalid_credentials",
             loginSession = result.Handle,

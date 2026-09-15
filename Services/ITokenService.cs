@@ -34,5 +34,12 @@ public interface ITokenService {
     string GenerateReauthToken(string userId, DateTime? issuedAt = null, DateTime? expiresAt = null);
     bool ValidateReauthToken(string token, out string? userId, out DateTime? issuedAt, out DateTime expiresAt);
 
+    /// <summary>
+    /// Mints a token a client keeps after signing in, so its later sign-in attempts are counted apart
+    /// from everyone else's. It grants no access.
+    /// </summary>
+    string GenerateDeviceToken(string userId);
+    bool ValidateDeviceToken(string token, out string? userId, out string? deviceId, out DateTime? issuedAt);
+
     string GenerateCheckoutSuccessToken(string productId, string secret);
 }

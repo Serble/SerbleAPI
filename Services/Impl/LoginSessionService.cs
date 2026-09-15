@@ -23,9 +23,6 @@ public class LoginSessionService(
 
     public static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(10);
 
-    public static string PasswordLimitKey(string userId) => "password:" + userId;
-    public static string TotpLimitKey(string userId) => "totp:" + userId;
-
     private sealed record SessionContext(string Handle, string Hash, DbLoginSession Session, User? User, int[] Flows) {
         public int Attemptable => LoginFlowRules.Attemptable(Flows, Session.CompletedMask);
         public bool CanAttempt(CredentialType type) => (Attemptable & CredentialTypes.Bit(type)) != 0;
@@ -59,12 +56,12 @@ public class LoginSessionService(
         return new LoginStarted(handle, methods, now + SessionLifetime);
     }
 
-    public async Task<LoginStepResult> Password(string handle, string password, string? callerUserId,
+    public async Task<LoginStepResult> Password(string handle, string password, string? callerUserId, LoginClient client,
         LoginPurpose? requiredPurpose = null, CancellationToken cancellationToken = default) {
         SessionContext? ctx = await Load(handle, callerUserId, requiredPurpose);
         if (ctx?.User == null || !ctx.CanAttempt(CredentialType.Password)) return Invalid;
 
-        RateLimitDecision limit = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity, PasswordLimitKey(ctx.User.Id));
+        RateLimitDecision limit = LoginAttempts.Charge(rateLimit, tokens, CredentialType.Password, ctx.User, client);
         if (!limit.Allowed) return RateLimited(limit);
 
         UserCredential? credential = await credentials.GetActivePassword(ctx.User.Id);
@@ -89,12 +86,12 @@ public class LoginSessionService(
         }
     }
 
-    public async Task<LoginStepResult> Totp(string handle, string code, string? callerUserId,
+    public async Task<LoginStepResult> Totp(string handle, string code, string? callerUserId, LoginClient client,
         LoginPurpose? requiredPurpose = null) {
         SessionContext? ctx = await Load(handle, callerUserId, requiredPurpose);
         if (ctx?.User == null || !ctx.CanAttempt(CredentialType.Totp)) return Invalid;
 
-        RateLimitDecision limit = rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Identity, TotpLimitKey(ctx.User.Id));
+        RateLimitDecision limit = LoginAttempts.Charge(rateLimit, tokens, CredentialType.Totp, ctx.User, client);
         if (!limit.Allowed) return RateLimited(limit);
 
         UserCredential? credential = await TotpCodes.VerifyAndConsume(credentials, ctx.User.Id, code);
@@ -227,13 +224,15 @@ public class LoginSessionService(
 
         if (!await sessions.TryConsume(ctx.Hash)) return Invalid;
 
+        string device = tokens.GenerateDeviceToken(user.Id);
         if (purpose == LoginPurpose.Reauth) {
             return new LoginStepResult(LoginStepOutcome.Complete, Token: tokens.GenerateReauthToken(user.Id),
-                Purpose: purpose);
+                Purpose: purpose, DeviceToken: device);
         }
 
         await users.SetLastLogin(user.Id, DateTime.UtcNow);
-        return new LoginStepResult(LoginStepOutcome.Complete, Token: tokens.GenerateLoginToken(user.Id), Purpose: purpose);
+        return new LoginStepResult(LoginStepOutcome.Complete, Token: tokens.GenerateLoginToken(user.Id), Purpose: purpose,
+            DeviceToken: device);
     }
 
     private static LoginStepResult Wrong(SessionContext ctx) => ctx.User == null

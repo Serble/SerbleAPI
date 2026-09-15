@@ -253,6 +253,43 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
         }
     }
     
+    public static readonly TimeSpan DeviceTokenLifetime = TimeSpan.FromDays(365);
+
+    // Device Token (identifies a client that has signed in to the account before)
+    // Claims:
+    // - userid
+    // - device
+    public string GenerateDeviceToken(string userId) {
+        Dictionary<string, string> claims = new() {
+            { "userid", userId },
+            { "device", OidcCrypto.NewHandle(16) },
+            { "type", "device" }
+        };
+        return GenerateToken(claims, DeviceTokenLifetime);
+    }
+
+    public bool ValidateDeviceToken(string token, out string? userId, out string? deviceId, out DateTime? issuedAt) {
+        userId = null;
+        deviceId = null;
+        issuedAt = null;
+        try {
+            if (!ValidateCurrentToken(token, out Dictionary<string, string>? claims, out string validationFailMsg)) {
+                logger.LogDebug(validationFailMsg);
+                return false;
+            }
+            if (!claims!.TryGetValue("userid", out userId)
+                || !claims.TryGetValue("device", out deviceId)
+                || !claims.TryGetValue("type", out string? type)
+                || type != "device") return false;
+            issuedAt = ReadIssuedAt(claims);
+            return true;
+        }
+        catch (Exception e) {
+            logger.LogDebug("Token validation failed: " + e);
+            return false;
+        }
+    }
+
     // Checkout Success Token (Given to other sites to confirm a successful checkout)
     // Claims:
     // - productid
