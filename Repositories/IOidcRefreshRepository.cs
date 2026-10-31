@@ -19,10 +19,12 @@ public interface IOidcRefreshRepository {
 
     /// <summary>
     /// Atomically rotates a refresh token. On success the presented token is retired and the
-    /// caller issues a replacement. If the token was already rotated/revoked, the whole grant
-    /// chain is revoked and <see cref="RefreshConsumeResult.Reuse"/> is set.
+    /// caller issues a replacement. A token rotated less than <paramref name="reuseGrace"/> ago
+    /// succeeds again, so the caller issues a second replacement in the same grant. Otherwise, if
+    /// the token was already rotated/revoked, the whole grant chain is revoked and
+    /// <see cref="RefreshConsumeResult.Reuse"/> is set.
     /// </summary>
-    Task<RefreshConsumeResult> Consume(string tokenHash);
+    Task<RefreshConsumeResult> Consume(string tokenHash, TimeSpan reuseGrace);
 
     /// <summary>
     /// Stores a rotated replacement token, guarding against a concurrent reuse-revocation of the

@@ -541,6 +541,9 @@ namespace SerbleAPI.Migrations
                     b.Property<bool>("Rotated")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<long>("RotatedAtUnix")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Scopes")
                         .IsRequired()
                         .HasMaxLength(512)

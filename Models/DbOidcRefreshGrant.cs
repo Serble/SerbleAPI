@@ -6,7 +6,8 @@ namespace SerbleAPI.Models;
 /// A server-side OIDC refresh-token grant. Only a hash of the refresh token is stored so a
 /// database leak cannot reveal usable tokens. Tokens are rotated on each use: redeeming a
 /// token marks it <see cref="Rotated"/> and issues a fresh one; presenting an already-rotated
-/// or revoked token is treated as reuse and revokes the whole grant chain.
+/// token after the reuse grace period, or a revoked one, is treated as reuse and revokes the whole
+/// grant chain.
 /// </summary>
 public class DbOidcRefreshGrant {
     [Key]
@@ -30,6 +31,9 @@ public class DbOidcRefreshGrant {
     public long ExpiresAtUnix { get; set; }
 
     public bool Rotated { get; set; }
+
+    /// <summary>When <see cref="Rotated"/> was set, or 0 for rows rotated before this was recorded.</summary>
+    public long RotatedAtUnix { get; set; }
 
     public bool Revoked { get; set; }
 }

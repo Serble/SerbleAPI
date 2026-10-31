@@ -18,10 +18,14 @@ namespace SerbleAPI.API.v1.Oidc;
 /// <c>authorization_code</c> and <c>refresh_token</c> grants with client authentication via
 /// HTTP Basic or form post (public clients use PKCE and no secret). Distinct from the legacy
 /// <c>OAuthTokenController</c>, which is left untouched for backward compatibility.
+///
+/// <para>Only failed client authentication is rate limited. Every client's requests come from its
+/// own server, so a per-address budget on all requests is shared by all of its users and a burst
+/// of sign-ins locks the whole client out. Nothing else here is guessable: codes and refresh
+/// tokens are long random handles.</para>
 /// </summary>
 [ApiController]
 [Route("api/v1/oauth/token")]
-[RateLimit(RateLimitTiers.Auth)]
 public class OidcTokenController(
     ILogger<OidcTokenController> logger,
     IAppRepository appRepo,
@@ -31,6 +35,7 @@ public class OidcTokenController(
     IOidcTokenService oidcTokens,
     IOidcClaimsService claims,
     IAppAccessPolicyService accessPolicy,
+    IRateLimitService rateLimit,
     IOptions<OidcSettings> settings) : ControllerManager {
 
     [HttpPost]
@@ -46,12 +51,18 @@ public class OidcTokenController(
         [FromForm] string? code_verifier,
         [FromForm] string? refresh_token) {
 
+        string ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        RateLimitDecision limit = rateLimit.Peek(RateLimitTiers.Auth, RateLimitScope.Ip, ip);
+        if (!limit.Allowed) return TooManyRequests(limit.RetryAfter, new { error = "too_many_requests" });
+
         (string? clientId, string? clientSecret) = ResolveClient(client_id, client_secret);
         if (string.IsNullOrEmpty(clientId)) return TokenError("invalid_client", "Missing client_id");
 
         OAuthApp? app = await appRepo.GetOAuthApp(clientId);
-        if (app == null) return TokenError("invalid_client", "Unknown client");
-        if (!AuthenticateClient(app, clientSecret)) return TokenError("invalid_client", "Client authentication failed");
+        if (app == null || !AuthenticateClient(app, clientSecret)) {
+            rateLimit.Check(RateLimitTiers.Auth, RateLimitScope.Ip, ip);
+            return TokenError("invalid_client", app == null ? "Unknown client" : "Client authentication failed");
+        }
 
         return grant_type switch {
             "authorization_code" => await HandleAuthorizationCode(app, code, redirect_uri, code_verifier),
@@ -94,7 +105,8 @@ public class OidcTokenController(
     private async Task<IActionResult> HandleRefreshToken(OAuthApp app, string? refreshToken) {
         if (string.IsNullOrEmpty(refreshToken)) return TokenError("invalid_request", "Missing refresh_token");
 
-        RefreshConsumeResult result = await refreshRepo.Consume(OidcCrypto.HashToken(refreshToken));
+        RefreshConsumeResult result = await refreshRepo.Consume(OidcCrypto.HashToken(refreshToken),
+            TimeSpan.FromSeconds(Math.Max(0, settings.Value.RefreshTokenReuseGraceSeconds)));
         if (result.Reuse) {
             logger.LogWarning("OIDC refresh token reuse detected for grant {GrantId}; grant revoked", result.GrantId);
             return TokenError("invalid_grant", "Refresh token has been revoked");

@@ -15,6 +15,13 @@ public class OidcSettings {
     public int IdTokenLifetimeSeconds { get; set; } = 900;
     public int RefreshTokenLifetimeDays { get; set; } = 30;
 
+    /// <summary>
+    /// How long a rotated refresh token can still be redeemed. Clients refresh from several
+    /// requests at once, or retry one whose response they never saw; without this, either looks
+    /// like a stolen token and revokes the user's grant.
+    /// </summary>
+    public int RefreshTokenReuseGraceSeconds { get; set; } = 60;
+
     /// <summary>Whether public (secret-less) clients must supply a PKCE challenge.</summary>
     public bool RequirePkceForPublicClients { get; set; } = true;
 }

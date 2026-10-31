@@ -50,4 +50,10 @@ public interface IRateLimitService {
     /// by tier and scope internally, so callers need not avoid collisions between tiers.
     /// </summary>
     RateLimitDecision Check(string tier, RateLimitScope scope, string key, int cost = 1);
+
+    /// <summary>
+    /// Whether a budget would refuse the next request, without drawing from it. For handlers that
+    /// only charge failures but must still turn a locked-out caller away up front.
+    /// </summary>
+    RateLimitDecision Peek(string tier, RateLimitScope scope, string key);
 }

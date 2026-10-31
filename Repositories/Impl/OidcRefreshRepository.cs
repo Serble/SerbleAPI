@@ -36,7 +36,7 @@ public class OidcRefreshRepository(SerbleDbContext db) : IOidcRefreshRepository 
         return true;
     }
 
-    public async Task<RefreshConsumeResult> Consume(string tokenHash) {
+    public async Task<RefreshConsumeResult> Consume(string tokenHash, TimeSpan reuseGrace) {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         DbOidcRefreshGrant? row = await db.OidcRefreshGrants
@@ -44,32 +44,39 @@ public class OidcRefreshRepository(SerbleDbContext db) : IOidcRefreshRepository 
             .FirstOrDefaultAsync(g => g.TokenHash == tokenHash);
         if (row == null) return new RefreshConsumeResult { Success = false };
 
+        if (!row.Rotated && !row.Revoked) {
+            if (row.ExpiresAtUnix <= now) return new RefreshConsumeResult { Success = false };
+
+            // Atomically retire this token; a concurrent redemption can only succeed once.
+            int affected = await db.OidcRefreshGrants
+                .Where(g => g.TokenHash == tokenHash && !g.Rotated && !g.Revoked)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(g => g.Rotated, true)
+                    .SetProperty(g => g.RotatedAtUnix, now));
+            if (affected == 1) return Redeemed(row);
+
+            // Lost the race to a concurrent redemption; judge against the state it left.
+            row = await db.OidcRefreshGrants
+                .AsNoTracking()
+                .FirstAsync(g => g.TokenHash == tokenHash);
+        }
+
+        bool inGrace = row.RotatedAtUnix > 0 && now - row.RotatedAtUnix <= (long)reuseGrace.TotalSeconds;
+        if (!row.Revoked && inGrace && row.ExpiresAtUnix > now) return Redeemed(row);
+
         // Reuse of a retired or revoked token: revoke the entire grant chain as a precaution.
-        if (row.Rotated || row.Revoked) {
-            await RevokeGrant(row.GrantId);
-            return new RefreshConsumeResult { Success = false, Reuse = true, GrantId = row.GrantId };
-        }
-
-        if (row.ExpiresAtUnix <= now) return new RefreshConsumeResult { Success = false };
-
-        // Atomically retire this token; a concurrent redemption can only succeed once.
-        int affected = await db.OidcRefreshGrants
-            .Where(g => g.TokenHash == tokenHash && !g.Rotated && !g.Revoked)
-            .ExecuteUpdateAsync(s => s.SetProperty(g => g.Rotated, true));
-        if (affected == 0) {
-            await RevokeGrant(row.GrantId);
-            return new RefreshConsumeResult { Success = false, Reuse = true, GrantId = row.GrantId };
-        }
-
-        return new RefreshConsumeResult {
-            Success      = true,
-            GrantId      = row.GrantId,
-            ClientId     = row.ClientId,
-            UserId       = row.UserId,
-            Scopes       = row.Scopes,
-            AuthTimeUnix = row.AuthTimeUnix
-        };
+        await RevokeGrant(row.GrantId);
+        return new RefreshConsumeResult { Success = false, Reuse = true, GrantId = row.GrantId };
     }
+
+    private static RefreshConsumeResult Redeemed(DbOidcRefreshGrant row) => new() {
+        Success      = true,
+        GrantId      = row.GrantId,
+        ClientId     = row.ClientId,
+        UserId       = row.UserId,
+        Scopes       = row.Scopes,
+        AuthTimeUnix = row.AuthTimeUnix
+    };
 
     public Task RevokeGrant(string grantId) =>
         db.OidcRefreshGrants

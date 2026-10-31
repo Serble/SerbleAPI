@@ -130,6 +130,36 @@ public class RateLimitService : IRateLimitService {
         }
     }
 
+    public RateLimitDecision Peek(string tier, RateLimitScope scope, string key) {
+        if (!_enabled) return RateLimitDecision.Unlimited;
+        if (!_tiers.TryGetValue(tier, out ResolvedRateLimitTier? resolved) || !resolved.Enabled)
+            return RateLimitDecision.Unlimited;
+
+        ResolvedRateLimitRule rule = scope == RateLimitScope.Ip ? resolved.PerIp : resolved.PerIdentity;
+        if (!rule.Enabled) return RateLimitDecision.Unlimited;
+
+        string id = $"{resolved.Name}:{(scope == RateLimitScope.Ip ? "ip" : "id")}:{key}";
+        DateTime now = DateTime.UtcNow;
+        if (!_partitions.TryGetValue(id, out Partition? partition))
+            return new RateLimitDecision(true, rule.PermitLimit, rule.PermitLimit, TimeSpan.Zero, rule.Window, false);
+
+        lock (partition) {
+            if (partition.BlockedUntil > now) {
+                TimeSpan left = partition.BlockedUntil - now;
+                return new RateLimitDecision(false, rule.PermitLimit, 0, left, left, true);
+            }
+
+            if (now - partition.WindowStart >= rule.Window)
+                return new RateLimitDecision(true, rule.PermitLimit, rule.PermitLimit, TimeSpan.Zero, rule.Window, false);
+
+            TimeSpan untilReset = rule.Window - (now - partition.WindowStart);
+            int remaining = Math.Max(0, rule.PermitLimit - partition.Count);
+            return remaining > 0
+                ? new RateLimitDecision(true, rule.PermitLimit, remaining, TimeSpan.Zero, untilReset, false)
+                : new RateLimitDecision(false, rule.PermitLimit, 0, untilReset, untilReset, false);
+        }
+    }
+
     private static TimeSpan LockoutFor(ResolvedRateLimitBackoff backoff, int violations) {
         double seconds = backoff.Base.TotalSeconds * Math.Pow(backoff.Multiplier, Math.Max(0, violations - 1));
 
