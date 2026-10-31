@@ -48,7 +48,8 @@ public class OidcAuthorizeController(
         [FromQuery] string? state,
         [FromQuery] string? nonce,
         [FromQuery] string? code_challenge,
-        [FromQuery] string? code_challenge_method) {
+        [FromQuery] string? code_challenge_method,
+        [FromQuery] string? prompt) {
 
         if (string.IsNullOrEmpty(client_id)) return BadRequest("Missing client_id");
         if (string.IsNullOrEmpty(redirect_uri)) return BadRequest("Missing redirect_uri");
@@ -77,7 +78,8 @@ public class OidcAuthorizeController(
             State               = state,
             Nonce               = nonce,
             CodeChallenge       = code_challenge,
-            CodeChallengeMethod = code_challenge_method
+            CodeChallengeMethod = code_challenge_method,
+            Prompt              = prompt
         };
         string sessionId = OidcCrypto.NewHandle();
         cache.Set(SessionKey(sessionId), request, SessionExpiry);
@@ -94,6 +96,9 @@ public class OidcAuthorizeController(
         public string AppName { get; set; } = "";
         public string AppDescription { get; set; } = "";
         public string[] Scopes { get; set; } = [];
+        public bool IsOfficial { get; set; }
+        /// <summary>The user need not be asked: the frontend should approve straight away.</summary>
+        public bool AutoApprove { get; set; }
         public bool Denied { get; set; }
         public string? Redirect { get; set; }
     }
@@ -124,11 +129,16 @@ public class OidcAuthorizeController(
             });
         }
 
+        string[] requested = OidcScopes.Parse(request.Scope);
+        AuthorizedApp? existing = (await user.GetAuthorizedApps()).FirstOrDefault(a => a.AppId == app.Id);
+
         return Ok(new ConsentInfoResponse {
             ClientId       = app.Id,
             AppName        = app.Name,
             AppDescription = app.Description,
-            Scopes         = OidcScopes.Parse(request.Scope)
+            Scopes         = requested,
+            IsOfficial     = app.IsOfficial,
+            AutoApprove    = OidcConsentRules.CanSkipConsent(app.IsOfficial, request.Prompt, requested, existing)
         });
     }
 
@@ -160,8 +170,11 @@ public class OidcAuthorizeController(
         }
 
         // Before the code, so a grant can never exist without the record that lets the user see it
-        // on their authorized-apps page and withdraw it.
-        await user.AuthorizeApp(new AuthorizedApp(app.Id, string.Join(' ', OidcScopes.Parse(request.Scope))) {
+        // on their authorized-apps page and withdraw it. Merged with any earlier OIDC grant so it
+        // keeps covering scopes approved on previous sign-ins.
+        AuthorizedApp? existing = (await user.GetAuthorizedApps()).FirstOrDefault(a => a.AppId == app.Id);
+        string grantScopes = OidcConsentRules.MergedGrantScopes(OidcScopes.Parse(request.Scope), existing);
+        await user.AuthorizeApp(new AuthorizedApp(app.Id, grantScopes) {
             GrantType = AuthorizedAppGrantType.Oidc
         });
 

@@ -13,4 +13,6 @@ public class OidcAuthorizationRequest {
     public string? Nonce { get; set; }
     public string? CodeChallenge { get; set; }
     public string? CodeChallengeMethod { get; set; }
+    /// <summary>The raw space-delimited <c>prompt</c> parameter; <c>consent</c> forces the consent screen.</summary>
+    public string? Prompt { get; set; }
 }
