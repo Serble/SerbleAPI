@@ -14,6 +14,17 @@ public class OAuthApp {
     public bool IsOfficial { get; set; }
     public DateTime DateCreated { get; set; }
 
+    /// <summary>Which apps may sign users in to this one server to server. Owner-controlled.</summary>
+    public CrossAppPolicy CrossAppPolicy { get; set; }
+    /// <summary>If non-empty, only these caller app ids may (still subject to the policy).</summary>
+    public List<string> CrossAppAllowedCallers { get; set; }
+    /// <summary>
+    /// Space-separated Serble permissions (legacy scope ids) this app receives through cross-app
+    /// sign-in; null for the identity-only default. See <see cref="Data.CrossAppRules.OidcScopesFor"/>
+    /// for what an OIDC redemption gets instead.
+    /// </summary>
+    public string? CrossAppScopes { get; set; }
+
     public OAuthApp(string ownerId) {
         Name = "";
         Description = "";
@@ -22,6 +33,7 @@ public class OAuthApp {
         ClientSecret = Guid.NewGuid().ToString();
         RedirectUri = "";
         AdditionalRedirectUris = [];
+        CrossAppAllowedCallers = [];
         DateCreated = DateTime.UtcNow;
     }
     

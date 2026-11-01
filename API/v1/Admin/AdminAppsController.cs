@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleAPI.Authentication;
 using SerbleAPI.Config;
+using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 using SerbleAPI.Services;
@@ -76,6 +77,10 @@ public class AdminAppsController(
         public string? Description { get; set; }
         public string? RedirectUri { get; set; }
         public string? OwnerId { get; set; }
+        public CrossAppPolicy? CrossAppPolicy { get; set; }
+        /// <summary>Space-separated legacy scope ids; "" resets to the default.</summary>
+        public string? CrossAppScopes { get; set; }
+        public string[]? CrossAppAllowedCallers { get; set; }
     }
 
     [HttpPatch("{id}")]
@@ -91,6 +96,15 @@ public class AdminAppsController(
         if (body.Name        != null) app.Name        = body.Name;
         if (body.Description != null) app.Description = body.Description;
         if (body.RedirectUri != null) app.RedirectUri = body.RedirectUri;
+
+        string? crossAppError = null;
+        if (body.CrossAppScopes != null && !CrossAppRules.TrySetScopes(app, body.CrossAppScopes, out crossAppError))
+            return BadRequest(crossAppError);
+        if (body.CrossAppPolicy is { } policy && !CrossAppRules.TrySetPolicy(app, policy, out crossAppError))
+            return BadRequest(crossAppError);
+        if (body.CrossAppAllowedCallers != null
+            && !CrossAppRules.TrySetAllowedCallers(app, body.CrossAppAllowedCallers, out crossAppError))
+            return BadRequest(crossAppError);
 
         await appRepo.UpdateOAuthApp(app);
         logger.LogInformation("Admin {AdminId} edited app {AppId}",
@@ -263,6 +277,9 @@ public class AdminAppView {
     public bool IsOfficial { get; set; }
     public ulong Coins { get; set; }
     public DateTime DateCreated { get; set; }
+    public CrossAppPolicy CrossAppPolicy { get; set; }
+    public string? CrossAppScopes { get; set; }
+    public List<string> CrossAppAllowedCallers { get; set; } = [];
 
     public static AdminAppView From(OAuthApp a, ulong coins = 0) => new() {
         Id           = a.Id,
@@ -273,6 +290,9 @@ public class AdminAppView {
         ClientSecret = a.ClientSecret,
         IsOfficial   = a.IsOfficial,
         Coins        = coins,
-        DateCreated  = a.DateCreated
+        DateCreated  = a.DateCreated,
+        CrossAppPolicy         = a.CrossAppPolicy,
+        CrossAppScopes         = a.CrossAppScopes,
+        CrossAppAllowedCallers = a.CrossAppAllowedCallers
     };
 }

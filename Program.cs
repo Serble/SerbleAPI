@@ -102,6 +102,7 @@ public static class Program {
         builder.Services.AddScoped<IAntiSpamService, AntiSpamService>();
         builder.Services.AddScoped<IGoogleReCaptchaService, GoogleReCaptchaService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
+        builder.Services.AddScoped<IAccountStateService, AccountStateService>();
         builder.Services.AddScoped<ITurnstileCaptchaService, TurnstileCaptchaService>();
         builder.Services.AddScoped<IEmailConfirmationService, EmailConfirmationService>();
         builder.Services.AddScoped<IRewardTaskService, RewardTaskService>();
@@ -114,6 +115,7 @@ public static class Program {
         builder.Services.AddHostedService<PasswordHashUpgradeService>();
         builder.Services.AddScoped<IWebhookDeliveryService, WebhookDeliveryService>();
         builder.Services.AddHostedService<WebhookDispatcherService>();
+        builder.Services.AddHostedService<OidcCodeCleanupService>();
 
         // Webhook endpoints are third-party URLs, so the timeout is short and explicit: a delivery
         // that hangs holds one of the dispatcher's concurrency slots, and the event will be retried
@@ -151,6 +153,7 @@ public static class Program {
         builder.Services.AddScoped<IAppAccessRepository, AppAccessRepository>();
         builder.Services.AddScoped<IOidcCodeRepository, OidcCodeRepository>();
         builder.Services.AddScoped<IOidcRefreshRepository, OidcRefreshRepository>();
+        builder.Services.AddScoped<ICrossAppGrantRepository, CrossAppGrantRepository>();
 
         // Authentication
         builder.Services.AddAuthentication(SerbleAuthenticationHandler.SchemeName)

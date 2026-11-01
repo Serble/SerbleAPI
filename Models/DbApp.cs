@@ -42,6 +42,16 @@ public class DbApp {
     public int? RequiredPermLevel { get; set; }
     
     public DateTime DateCreated { get; set; }
+
+    /// <summary>Owner-controlled. Maps to <see cref="Data.Schemas.CrossAppPolicy"/>.</summary>
+    public int CrossAppPolicy { get; set; }
+
+    /// <summary>Caller allowlist for cross-app sign-in, as a JSON string array; null when empty.</summary>
+    public string? CrossAppAllowedCallers { get; set; }
+
+    /// <summary>Space-separated legacy scope ids a cross-app sign-in grants; null for the default.</summary>
+    [StringLength(512)]
+    public string? CrossAppScopes { get; set; }
     
     // navigation properties
     public DbUser OwnerNavigation { get; set; } = null!;

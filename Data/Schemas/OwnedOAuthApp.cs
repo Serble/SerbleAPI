@@ -22,6 +22,9 @@ public class OwnedOAuthApp {
     public bool RequirePkce { get; set; }
     public bool IsOfficial { get; set; }
     public DateTime DateCreated { get; set; }
+    public CrossAppPolicy CrossAppPolicy { get; set; }
+    public List<string> CrossAppAllowedCallers { get; set; }
+    public string? CrossAppScopes { get; set; }
 
     public OwnedOAuthApp(OAuthApp app) {
         OwnerId                = app.OwnerId;
@@ -34,5 +37,8 @@ public class OwnedOAuthApp {
         RequirePkce            = app.RequirePkce;
         IsOfficial             = app.IsOfficial;
         DateCreated            = app.DateCreated;
+        CrossAppPolicy         = app.CrossAppPolicy;
+        CrossAppAllowedCallers = app.CrossAppAllowedCallers;
+        CrossAppScopes         = app.CrossAppScopes;
     }
 }

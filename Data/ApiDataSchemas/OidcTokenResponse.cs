@@ -28,4 +28,12 @@ public class OidcTokenResponse {
 
     [JsonPropertyName("scope")]
     public string Scope { get; set; } = "";
+
+    /// <summary>
+    /// The app that obtained the code being redeemed through cross-app sign-in. Omitted for
+    /// browser sign-ins and refreshes.
+    /// </summary>
+    [JsonPropertyName("via_app")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ViaApp { get; set; }
 }

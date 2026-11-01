@@ -17,7 +17,10 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         IsPublicClient = r.IsPublicClient,
         RequirePkce    = r.RequirePkce,
         IsOfficial     = r.IsOfficial,
-        DateCreated    = r.DateCreated
+        DateCreated    = r.DateCreated,
+        CrossAppPolicy         = (CrossAppPolicy)r.CrossAppPolicy,
+        CrossAppAllowedCallers = DeserializeUris(r.CrossAppAllowedCallers),
+        CrossAppScopes         = r.CrossAppScopes
     };
 
     private static List<string> DeserializeUris(string? json) {
@@ -67,7 +70,10 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
             IsPublicClient   = app.IsPublicClient,
             RequirePkce      = app.RequirePkce,
             IsOfficial       = app.IsOfficial,
-            DateCreated      = app.DateCreated == default ? DateTime.UtcNow : app.DateCreated
+            DateCreated      = app.DateCreated == default ? DateTime.UtcNow : app.DateCreated,
+            CrossAppPolicy         = (int)app.CrossAppPolicy,
+            CrossAppAllowedCallers = SerializeUris(app.CrossAppAllowedCallers),
+            CrossAppScopes         = app.CrossAppScopes
         });
         return db.SaveChangesAsync();
     }
@@ -84,6 +90,9 @@ public class AppRepository(SerbleDbContext db) : IAppRepository {
         row.IsPublicClient   = app.IsPublicClient;
         row.RequirePkce      = app.RequirePkce;
         row.IsOfficial       = app.IsOfficial;
+        row.CrossAppPolicy         = (int)app.CrossAppPolicy;
+        row.CrossAppAllowedCallers = SerializeUris(app.CrossAppAllowedCallers);
+        row.CrossAppScopes         = app.CrossAppScopes;
         await db.SaveChangesAsync();
     }
 

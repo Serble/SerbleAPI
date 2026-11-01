@@ -11,4 +11,6 @@ public class OidcAuthorizationCode {
     public string? CodeChallenge { get; set; }
     public string? CodeChallengeMethod { get; set; }
     public long AuthTimeUnix { get; set; }
+    /// <summary>The app that obtained this code through cross-app sign-in; null for a browser-flow code.</summary>
+    public string? ViaClientId { get; set; }
 }

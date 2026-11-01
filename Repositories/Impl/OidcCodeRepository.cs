@@ -18,16 +18,29 @@ public class OidcCodeRepository(SerbleDbContext db) : IOidcCodeRepository {
             CodeChallengeMethod = code.CodeChallengeMethod,
             AuthTimeUnix        = code.AuthTimeUnix,
             ExpiresAtUnix       = expiresAtUnix,
-            Consumed            = false
+            Consumed            = false,
+            ViaClientId         = code.ViaClientId
         });
         return db.SaveChangesAsync();
     }
 
-    public async Task<OidcAuthorizationCode?> ConsumeCode(string code) {
+    public Task<OidcAuthorizationCode?> ConsumeCode(string code) =>
+        Consume(db.OidcAuthorizationCodes.Where(c => c.Code == code), code);
+
+    public Task<OidcAuthorizationCode?> ConsumeCrossAppCode(string code, string clientId) =>
+        Consume(db.OidcAuthorizationCodes.Where(c =>
+            c.Code == code && c.ClientId == clientId && c.ViaClientId != null), code);
+
+    public Task<int> PurgeExpired(long beforeUnix) =>
+        db.OidcAuthorizationCodes
+            .Where(c => c.ExpiresAtUnix < beforeUnix)
+            .ExecuteDeleteAsync();
+
+    private async Task<OidcAuthorizationCode?> Consume(IQueryable<DbOidcAuthorizationCode> match, string code) {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         // Single atomic UPDATE so a concurrent redemption of the same code can only win once.
-        int affected = await db.OidcAuthorizationCodes
-            .Where(c => c.Code == code && !c.Consumed && c.ExpiresAtUnix > now)
+        int affected = await match
+            .Where(c => !c.Consumed && c.ExpiresAtUnix > now)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.Consumed, true));
         if (affected == 0) return null;
 
@@ -45,7 +58,8 @@ public class OidcCodeRepository(SerbleDbContext db) : IOidcCodeRepository {
             Nonce               = row.Nonce,
             CodeChallenge       = row.CodeChallenge,
             CodeChallengeMethod = row.CodeChallengeMethod,
-            AuthTimeUnix        = row.AuthTimeUnix
+            AuthTimeUnix        = row.AuthTimeUnix,
+            ViaClientId         = row.ViaClientId
         };
     }
 }

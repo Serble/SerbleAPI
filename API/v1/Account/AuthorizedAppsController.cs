@@ -16,6 +16,7 @@ public class AuthorizedAppsController(
     IUserRepository userRepo,
     IAppRepository appRepo,
     IOidcRefreshRepository refreshRepo,
+    ICrossAppGrantRepository crossAppGrants,
     ITokenService tokens) : ControllerManager {
 
     /// <summary>
@@ -47,7 +48,8 @@ public class AuthorizedAppsController(
 
     /// <summary>
     /// Withdraws the user's grant to an app, whichever flow granted it. The refresh chains go with
-    /// the consent row: an OIDC client holding one rotates it indefinitely otherwise.
+    /// the consent row: an OIDC client holding one rotates it indefinitely otherwise. So do any
+    /// cross-app consents naming the app on either side.
     /// </summary>
     [HttpDelete("{appId}")]
     [Authorize(Policy = "UserOnly")]
@@ -62,8 +64,10 @@ public class AuthorizedAppsController(
 
         await userRepo.DeleteAuthorizedApp(user.Id, appId);
         int revokedChains = await refreshRepo.RevokeUserClientGrants(user.Id, appId);
-        logger.LogInformation("User {UserId} de-authorized app {AppId} ({Chains} refresh grants revoked)",
-            user.Id, appId, revokedChains);
+        int crossApp = await crossAppGrants.DeleteGrantsInvolving(user.Id, appId);
+        logger.LogInformation(
+            "User {UserId} de-authorized app {AppId} ({Chains} refresh grants, {CrossApp} cross-app consents revoked)",
+            user.Id, appId, revokedChains, crossApp);
         return Ok();
     }
 }

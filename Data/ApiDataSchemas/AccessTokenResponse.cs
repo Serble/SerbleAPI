@@ -15,4 +15,12 @@ public class AccessTokenResponse {
     
     [JsonPropertyName("refresh_token")]
     public string RefreshToken { get; set; } = null!;
+
+    /// <summary>
+    /// The app that obtained the code being redeemed through cross-app sign-in, so the redeeming
+    /// app can tell the session apart from one the user started themselves. Omitted otherwise.
+    /// </summary>
+    [JsonPropertyName("via_app")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ViaApp { get; set; }
 }

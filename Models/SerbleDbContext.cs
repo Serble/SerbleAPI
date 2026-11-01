@@ -45,6 +45,7 @@ public class SerbleDbContext : DbContext {
     public virtual DbSet<DbTaxAppCharge> TaxAppCharges { get; set; }
     public virtual DbSet<DbAppWebhook> AppWebhooks { get; set; }
     public virtual DbSet<DbWebhookDelivery> WebhookDeliveries { get; set; }
+    public virtual DbSet<DbUserCrossAppGrant> UserCrossAppGrants { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         // Keep transaction audit records when a referenced balance is deleted: null the FK
@@ -118,5 +119,16 @@ public class SerbleDbContext : DbContext {
             .WithMany()
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // A consent goes with the user or with either app it names. One row per pair.
+        modelBuilder.Entity<DbUserCrossAppGrant>(e => {
+            e.HasOne(g => g.UserNavigation).WithMany()
+                .HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(g => g.CallerAppNavigation).WithMany()
+                .HasForeignKey(g => g.CallerAppId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(g => g.TargetAppNavigation).WithMany()
+                .HasForeignKey(g => g.TargetAppId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(g => new { g.UserId, g.CallerAppId, g.TargetAppId }).IsUnique();
+        });
     }
 }

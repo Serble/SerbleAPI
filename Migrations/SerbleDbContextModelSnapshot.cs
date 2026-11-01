@@ -36,6 +36,16 @@ namespace SerbleAPI.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<string>("CrossAppAllowedCallers")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("CrossAppPolicy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CrossAppScopes")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
                     b.Property<DateTime>("DateCreated")
                         .HasColumnType("datetime(6)");
 
@@ -505,6 +515,10 @@ namespace SerbleAPI.Migrations
 
                     b.Property<string>("UserId")
                         .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ViaClientId")
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
@@ -1105,6 +1119,44 @@ namespace SerbleAPI.Migrations
                     b.ToTable("UserCredentials");
                 });
 
+            modelBuilder.Entity("SerbleAPI.Models.DbUserCrossAppGrant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CallerAppId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("TargetAppId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CallerAppId");
+
+                    b.HasIndex("TargetAppId");
+
+                    b.HasIndex("UserId", "CallerAppId", "TargetAppId")
+                        .IsUnique();
+
+                    b.ToTable("UserCrossAppGrants");
+                });
+
             modelBuilder.Entity("SerbleAPI.Models.DbUserGroup", b =>
                 {
                     b.Property<int>("Id")
@@ -1601,6 +1653,33 @@ namespace SerbleAPI.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("UserNavigation");
+                });
+
+            modelBuilder.Entity("SerbleAPI.Models.DbUserCrossAppGrant", b =>
+                {
+                    b.HasOne("SerbleAPI.Models.DbApp", "CallerAppNavigation")
+                        .WithMany()
+                        .HasForeignKey("CallerAppId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SerbleAPI.Models.DbApp", "TargetAppNavigation")
+                        .WithMany()
+                        .HasForeignKey("TargetAppId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SerbleAPI.Models.DbUser", "UserNavigation")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CallerAppNavigation");
+
+                    b.Navigation("TargetAppNavigation");
 
                     b.Navigation("UserNavigation");
                 });

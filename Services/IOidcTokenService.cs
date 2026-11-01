@@ -28,4 +28,6 @@ public class OidcAccessTokenInfo {
     public string UserId { get; init; } = null!;
     public string ClientId { get; init; } = null!;
     public string Scope { get; init; } = null!;
+    /// <summary>The token's issue time, to weigh against the account's revocation cut-off.</summary>
+    public DateTime? IssuedAt { get; init; }
 }

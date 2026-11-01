@@ -8,6 +8,7 @@ using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 using SerbleAPI.Repositories.Impl;
 using SerbleAPI.Services;
+using SerbleAPI.Services.Impl;
 
 namespace SerbleAPI.Authentication;
 
@@ -37,8 +38,7 @@ public class SerbleAuthenticationHandler(
     UrlEncoder encoder,
     ITokenService tokens,
     IAppApiKeyRepository apiKeys,
-    IUserRepository users,
-    IMemoryCache cache)
+    IAccountStateService accountState)
     : AuthenticationHandler<SerbleAuthenticationOptions>(options, logger, encoder) {
 
     public const string SchemeName = "Serble";
@@ -47,19 +47,13 @@ public class SerbleAuthenticationHandler(
     /// Cache key prefix for the per-user account-state lookup. Public so that the admin routes which
     /// change that state can drop the entry and have it take effect at once.
     /// </summary>
-    public const string AccountStateCachePrefix = "authstate:usable:";
+    public const string AccountStateCachePrefix = AccountStateService.CachePrefix;
 
     /// <summary>
     /// How long an account-state lookup is reused: the window in which a token belonging to a
-    /// just-disabled or just-signed-out account still works. Not zero, because the alternative is a
-    /// user row read on every authenticated request. Routes that change the state drop the entry, so
-    /// this only bounds other replicas.
+    /// just-disabled or just-signed-out account still works. See <see cref="AccountStateService.Ttl"/>.
     /// </summary>
-    public static readonly TimeSpan AccountStateTtl = TimeSpan.FromSeconds(30);
-
-    /// <param name="Usable">Whether the account exists and is not disabled.</param>
-    /// <param name="TokensValidFrom">The revocation cut-off, or null if nothing has been revoked.</param>
-    private readonly record struct AccountState(bool Usable, DateTime? TokensValidFrom);
+    public static readonly TimeSpan AccountStateTtl = AccountStateService.Ttl;
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync() {
         // Primary: custom SerbleAuth header
@@ -125,12 +119,8 @@ public class SerbleAuthenticationHandler(
         if (!tokens.ValidateLoginToken(token, out string? userId, out DateTime? issuedAt)) {
             return AuthenticateResult.Fail("Invalid user token");
         }
-        AccountState state = await GetAccountState(userId!);
-        if (!state.Usable) {
-            return AuthenticateResult.Fail("Account is disabled");
-        }
-        if (IsRevoked(state, issuedAt)) {
-            return AuthenticateResult.Fail("Token has been revoked");
+        if (!await accountState.IsTokenUsable(userId!, issuedAt)) {
+            return AuthenticateResult.Fail("Account is disabled or token has been revoked");
         }
 
         return BuildTicket([
@@ -145,13 +135,10 @@ public class SerbleAuthenticationHandler(
                 out DateTime? issuedAt))
             return AuthenticateResult.Fail("Invalid app access token");
         // An app token acts on behalf of a user, so disabling the account stops the app's token too.
-        AccountState state = await GetAccountState(appUserId!);
-        if (!state.Usable)
-            return AuthenticateResult.Fail("Account is disabled");
         // A third-party app holding a refresh token will exchange it for a fresh access token and
         // carry on; ending that is what de-authorising the app is for.
-        if (IsRevoked(state, issuedAt))
-            return AuthenticateResult.Fail("Token has been revoked");
+        if (!await accountState.IsTokenUsable(appUserId!, issuedAt))
+            return AuthenticateResult.Fail("Account is disabled or token has been revoked");
 
         List<Claim> claims = [
             new Claim("userid",    appUserId!),
@@ -161,34 +148,6 @@ public class SerbleAuthenticationHandler(
         // appid is absent on tokens issued before it was added; official-app checks treat those as non-official.
         if (!string.IsNullOrEmpty(appId)) claims.Add(new Claim("appid", appId));
         return BuildTicket(claims);
-    }
-
-    /// <summary>
-    /// What the account behind a token currently says about it: a valid signature only proves the
-    /// token was issued. Fails closed — a user row that cannot be found is unusable, which covers a
-    /// token outliving the account it names, and a lookup that throws propagates rather than passing.
-    /// </summary>
-    private async Task<AccountState> GetAccountState(string userId) {
-        if (string.IsNullOrEmpty(userId)) return new AccountState(false, null);
-
-        string cacheKey = AccountStateCachePrefix + userId;
-        if (cache.TryGetValue(cacheKey, out AccountState cached)) return cached;
-
-        User? user = await users.GetUser(userId);
-        AccountState state = user == null || user.IsDisabled()
-            ? new AccountState(false, null)
-            : new AccountState(true, user.TokensValidFrom);
-        cache.Set(cacheKey, state, AccountStateTtl);
-        return state;
-    }
-
-    /// <summary>
-    /// Whether a token predates the account's revocation cut-off. A token with no issue time to
-    /// compare cannot be shown to postdate the cut-off, so it is rejected once one exists.
-    /// </summary>
-    private static bool IsRevoked(AccountState state, DateTime? issuedAt) {
-        if (state.TokensValidFrom is not { } cutoff) return false;
-        return issuedAt is not { } iat || iat < cutoff;
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {

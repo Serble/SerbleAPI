@@ -1,3 +1,4 @@
+using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 
 namespace SerbleAPI.Data.ApiDataSchemas; 
@@ -38,6 +39,25 @@ public class AppEditRequest {
                     throw new ArgumentException(redirectUriError);
                 }
                 target.RedirectUri = NewValue;
+                break;
+
+            // Cross-app sign-in: owner-controlled, since the target app decides who it accepts.
+            case "cross_app_policy": {
+                if (!CrossAppRules.TryParsePolicy(NewValue, out CrossAppPolicy policy)
+                    || !CrossAppRules.TrySetPolicy(target, policy, out _))
+                    throw new ArgumentException("Invalid cross_app_policy (disabled, official_only or any_with_consent)");
+                break;
+            }
+
+            case "cross_app_scopes":
+                if (!CrossAppRules.TrySetScopes(target, NewValue, out string? scopesError))
+                    throw new ArgumentException(scopesError);
+                break;
+
+            case "cross_app_allowed_callers":
+                if (!CrossAppRules.TrySetAllowedCallers(target, CrossAppRules.ParseList(NewValue),
+                        out string? callersError))
+                    throw new ArgumentException(callersError);
                 break;
 
             default:

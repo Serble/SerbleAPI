@@ -58,7 +58,12 @@ public class OidcTokenService(
             string scope = jwt.Claims.FirstOrDefault(c => c.Type == "scope")?.Value ?? "";
             if (sub == null || clientId == null) return false;
 
-            info = new OidcAccessTokenInfo { UserId = sub, ClientId = clientId, Scope = scope };
+            info = new OidcAccessTokenInfo {
+                UserId   = sub,
+                ClientId = clientId,
+                Scope    = scope,
+                IssuedAt = jwt.IssuedAt == DateTime.MinValue ? null : jwt.IssuedAt
+            };
             return true;
         }
         catch (Exception e) {

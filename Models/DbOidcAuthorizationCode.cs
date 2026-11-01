@@ -36,5 +36,9 @@ public class DbOidcAuthorizationCode {
 
     public long ExpiresAtUnix { get; set; }
 
+    /// <summary>The app that obtained this code through cross-app sign-in; null for a browser-flow code.</summary>
+    [StringLength(64)]
+    public string? ViaClientId { get; set; }
+
     public bool Consumed { get; set; }
 }
