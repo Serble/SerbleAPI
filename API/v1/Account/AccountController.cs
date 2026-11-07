@@ -49,8 +49,7 @@ public class AccountController(
         return Ok();
     }
 
-    // Sends a confirmation email, so this is a way to make our domain send mail.
-    [RateLimit(RateLimitTiers.Costly)]
+    [RateLimit(RateLimitTiers.Signup)]
     [HttpPost]
     [AllowAnonymous]
     public async Task<ActionResult<SanitisedUser>> Register([FromBody] RegisterRequestBody requestBody, [FromHeader] AntiSpamHeader antiSpamHeader) {

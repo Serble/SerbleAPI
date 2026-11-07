@@ -13,6 +13,8 @@ namespace SerbleAPI.Config;
 ///   steps rather than by an attribute. Per-ip is one client against the account: a device it
 ///   has signed in on before, otherwise an address. Per-identity is every other client against
 ///   the account together, which bounds guessing spread over many addresses.</item>
+///   <item><b>signup</b> — account creation. Always anonymous, so only per-ip applies; sized for
+///   a shared address signing up a group, not for a farm.</item>
 /// </list>
 /// </summary>
 public static class RateLimitTiers {
@@ -22,6 +24,7 @@ public static class RateLimitTiers {
     public const string Write  = "write";
     public const string Read   = "read";
     public const string Login  = "login";
+    public const string Signup = "signup";
 
     /// <summary>
     /// Built-in limits, used wherever configuration is silent. Per-address numbers are looser
@@ -57,7 +60,15 @@ public static class RateLimitTiers {
             [Login] = new(Login, true,
                 PerIp:       new(true, 5,  TimeSpan.FromMinutes(1)),
                 PerIdentity: new(true, 30, TimeSpan.FromHours(1)),
-                Backoff:     new(true, TimeSpan.FromMinutes(1), 4, TimeSpan.FromHours(1), TimeSpan.FromHours(1)))
+                Backoff:     new(true, TimeSpan.FromMinutes(1), 4, TimeSpan.FromHours(1), TimeSpan.FromHours(1))),
+
+            // Fifteen an hour covers a classroom or office behind one NAT signing up together, with
+            // room for taken usernames and failed captchas; an address that keeps going waits an
+            // hour by its second overrun.
+            [Signup] = new(Signup, true,
+                PerIp:       new(true, 15, TimeSpan.FromHours(1)),
+                PerIdentity: new(true, 15, TimeSpan.FromHours(1)),
+                Backoff:     new(true, TimeSpan.FromMinutes(10), 4, TimeSpan.FromHours(1), TimeSpan.FromHours(1)))
         };
 
     public static IReadOnlyCollection<string> All => Defaults.Keys;
