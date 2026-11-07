@@ -21,7 +21,6 @@ public interface ITokenService {
     bool ValidateAccessToken(string token, out string? userId, out string? appId, out string scope,
         out DateTime? issuedAt);
 
-    string GenerateRefreshToken(string userId, string appId, string scope);
     bool ValidateRefreshToken(string token, string appId, out string? userId, out string scope);
 
     string GenerateEmailConfirmationToken(string userId, string email);

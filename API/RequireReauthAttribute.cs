@@ -30,7 +30,8 @@ public sealed class RequireReauthAttribute : Attribute, IAsyncActionFilter {
     public static DateTime? ExpiresAt(HttpContext http) =>
         http.Items.TryGetValue(ExpiresItemKey, out object? value) ? value as DateTime? : null;
 
-    private static async Task<bool> IsSatisfied(HttpContext http) {
+    /// <summary>Whether this request carries a valid, recent reauth token for its user.</summary>
+    public static async Task<bool> IsSatisfied(HttpContext http) {
         if (!http.User.IsUser() || http.User.GetUserId() is not { } userId) return false;
         if (!http.Request.Headers.TryGetValue(HeaderName, out StringValues header)) return false;
 

@@ -82,7 +82,7 @@ public class AppController(
         if (target == null) return Unauthorized();
         OAuthApp? app = await appRepo.GetOAuthApp(appid);
         if (app == null) return NotFound();
-        if (target.Id != app.OwnerId) return Forbid("User does not own app");
+        if (target.Id != app.OwnerId) return Forbid();
         await appRepo.DeleteOAuthApp(appid);
         return Ok();
     }

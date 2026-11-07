@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using SerbleAPI.Authentication;
 using SerbleAPI.Services;
 
@@ -87,13 +88,12 @@ public class RateLimitMiddleware(
     }
 
     private static Task WriteTooManyRequests(HttpContext context, RateLimitDecision decision) {
-        int seconds = Math.Max(1, (int)Math.Ceiling(decision.RetryAfter.TotalSeconds));
+        RateLimitedResponse body = RateLimitedResponse.For(decision.RetryAfter);
 
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.Response.Headers.RetryAfter = seconds.ToString();
+        context.Response.Headers.RetryAfter = body.RetryAfter.ToString();
         context.Response.ContentType = "application/json";
 
-        return context.Response.WriteAsync(
-            $$"""{"error":"too_many_requests","message":"Too many requests. Retry in {{seconds}} seconds.","retry_after":{{seconds}}}""");
+        return context.Response.WriteAsync(JsonSerializer.Serialize(body));
     }
 }

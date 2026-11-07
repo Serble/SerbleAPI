@@ -151,16 +151,6 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     // - userid
     // - appid
     // - scope
-    public string GenerateRefreshToken(string userId, string appId, string scope) {
-        Dictionary<string, string> claims = new() {
-            { "userid", userId },
-            { "appid", appId },
-            { "scope", scope},
-            { "type", "oauth-refresh" }
-        };
-        return GenerateToken(claims);
-    }
-    
     public bool ValidateRefreshToken(string token, string appId, out string? userId, out string scope) {
         userId = null;
         scope = "";
@@ -187,13 +177,15 @@ public class TokenService(IOptions<JwtSettings> settings, ILogger<TokenService> 
     // Claims:
     // - userid
     // - email
+    public const int EmailConfirmationLifetimeHours = 24;
+
     public string GenerateEmailConfirmationToken(string userId, string email) {
         Dictionary<string, string> claims = new() {
             { "userid", userId },
             { "email", email },
             { "type", "email-confirmation" }
         };
-        return GenerateToken(claims);
+        return GenerateToken(claims, TimeSpan.FromHours(EmailConfirmationLifetimeHours));
     }
     
     public bool ValidateEmailConfirmationToken(string token, out string? userId, out string email) {

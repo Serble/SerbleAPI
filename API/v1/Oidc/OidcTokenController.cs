@@ -68,7 +68,7 @@ public class OidcTokenController(
 
         string ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         RateLimitDecision limit = rateLimit.Peek(RateLimitTiers.Auth, RateLimitScope.Ip, ip);
-        if (!limit.Allowed) return TooManyRequests(limit.RetryAfter, new { error = "too_many_requests" });
+        if (!limit.Allowed) return TooManyRequests(limit.RetryAfter);
 
         (string? clientId, string? clientSecret) = ResolveClient(client_id, client_secret);
         if (string.IsNullOrEmpty(clientId)) return TokenError("invalid_client", "Missing client_id");

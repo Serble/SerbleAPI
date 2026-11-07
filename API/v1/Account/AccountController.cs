@@ -109,6 +109,9 @@ public class AccountController(
         }
 
         logger.LogDebug("Email from " + originalEmail + " to " + newUser.Email);
+        if (newUser.Email != originalEmail && !await RequireReauthAttribute.IsSatisfied(HttpContext)) {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "reauth_required" });
+        }
         if (newUser.Email != originalEmail && !string.IsNullOrWhiteSpace(newUser.Email)) {
             newUser.VerifiedEmail = false;
             logger.LogDebug("Sending email verification");

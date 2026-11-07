@@ -73,7 +73,8 @@ public static class Program {
         
         builder.Services.AddControllers(options => options.Filters.Add<PasswordHasherBusyFilter>());
         builder.Services.AddHttpClient();
-        builder.Services.AddSwaggerGen();
+        // Nested request bodies share short names across controllers, so ids need the full name.
+        builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(t => t.FullName!.Replace('+', '.')));
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddDistributedMemoryCache();
         builder.Services.AddMemoryCache();

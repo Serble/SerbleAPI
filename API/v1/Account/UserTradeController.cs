@@ -24,7 +24,8 @@ public class UserTradeController(
     IUserTradeRepository tradeRepo,
     ITransactionRepository transactionRepo,
     IUserRepository userRepo,
-    IItemRepository itemRepo) : ControllerManager {
+    IItemRepository itemRepo,
+    IBalanceRepository balanceRepo) : ControllerManager {
 
     /// <summary>How long a trade stays open for the recipient to act before it expires.</summary>
     public static readonly TimeSpan TradeLifetime = TimeSpan.FromDays(7);
@@ -138,7 +139,12 @@ public class UserTradeController(
             && offeredItemIds.Count == 0 && requestedItemIds.Count == 0)
             return BadRequest("A trade must move at least one asset (coins or items).");
 
-        // You can only offer items you currently own.
+        // You can only offer what you currently hold; approval checks again. Only the sender's side
+        // is checked here, or a proposal could probe the recipient's balance.
+        if (body.OfferedCoins > 0) {
+            Balance from = await balanceRepo.GetBalance(BalanceOwnerType.User, fromUserId);
+            if (from.Coins < body.OfferedCoins) return BadRequest("You do not have enough coins for that offer.");
+        }
         foreach (string itemId in offeredItemIds) {
             Item? item = await itemRepo.GetItem(itemId);
             if (item == null) return NotFound($"Offered item '{itemId}' not found.");

@@ -30,7 +30,7 @@ public class ControllerManager : Controller {
         new(HttpContext.Connection.RemoteIpAddress, Request.Headers[DeviceTokenHeader].FirstOrDefault());
 
     protected ObjectResult TooManyRequests(TimeSpan retryAfter, object? body = null) {
-        Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
-        return StatusCode(StatusCodes.Status429TooManyRequests, body ?? new { error = "rate_limited" });
+        Response.Headers.RetryAfter = RateLimitedResponse.Seconds(retryAfter).ToString();
+        return StatusCode(StatusCodes.Status429TooManyRequests, body ?? RateLimitedResponse.For(retryAfter));
     }
 }
