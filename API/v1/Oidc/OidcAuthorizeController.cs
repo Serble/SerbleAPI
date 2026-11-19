@@ -74,7 +74,8 @@ public class OidcAuthorizeController(
         OidcAuthorizationRequest request = new() {
             ClientId            = client_id,
             RedirectUri         = redirect_uri,
-            Scope               = scope ?? "",
+            // Unknown scopes are ignored, as OIDC asks, so nothing unexplained reaches the consent screen.
+            Scope               = string.Join(' ', OidcScopes.ParseSupported(scope)),
             State               = state,
             Nonce               = nonce,
             CodeChallenge       = code_challenge,

@@ -16,7 +16,7 @@ public interface IOidcTokenService {
     string GenerateIdToken(string userId, string clientId, string? nonce, long authTimeUnix,
         IEnumerable<Claim> extraClaims);
 
-    /// <summary>Builds an OIDC access token (audience = issuer, consumed by the userinfo endpoint).</summary>
+    /// <summary>Builds an OIDC access token for the Serble API (userinfo and every scoped endpoint).</summary>
     string GenerateAccessToken(string userId, string clientId, string scope);
 
     /// <summary>Validates an OIDC access token. Rejects legacy HS256 tokens and id tokens.</summary>

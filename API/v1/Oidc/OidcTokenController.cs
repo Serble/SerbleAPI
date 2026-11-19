@@ -118,7 +118,7 @@ public class OidcTokenController(
         if (user == null) return TokenError("invalid_grant", "User no longer exists");
         user.WithRepos(userRepo);
 
-        // A cross-app code carries Serble permissions; as an OIDC redemption it grants identity.
+        // A cross-app code carries Serble permissions only; an OIDC redemption adds identity scopes.
         string[] scopes = crossApp
             ? CrossAppRules.OidcScopesFor(CrossAppRules.ParseList(stored.Scopes))
             : OidcScopes.Parse(stored.Scopes);

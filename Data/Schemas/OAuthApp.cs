@@ -21,7 +21,7 @@ public class OAuthApp {
     /// <summary>
     /// Space-separated Serble permissions (legacy scope ids) this app receives through cross-app
     /// sign-in; null for the identity-only default. See <see cref="Data.CrossAppRules.OidcScopesFor"/>
-    /// for what an OIDC redemption gets instead.
+    /// for what an OIDC redemption gets alongside them.
     /// </summary>
     public string? CrossAppScopes { get; set; }
 

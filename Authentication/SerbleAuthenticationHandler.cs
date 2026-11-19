@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using SerbleAPI.Data;
 using SerbleAPI.Data.Schemas;
 using SerbleAPI.Repositories;
 using SerbleAPI.Repositories.Impl;
@@ -21,7 +22,7 @@ public class SerbleAuthenticationOptions : AuthenticationSchemeOptions;
 /// Custom ASP.NET authentication handler that supports two header formats:
 ///
 ///   SerbleAuth: User &lt;token&gt;   — direct user login JWT (full_access)
-///   SerbleAuth: App &lt;token&gt;    — OAuth access JWT (scoped)
+///   SerbleAuth: App &lt;token&gt;    — OAuth access JWT (scoped): legacy or OIDC
 ///
 ///   Authorization: Bearer &lt;token&gt; — tries user token first, then app token,
 ///                                     so both token types work with the standard
@@ -37,6 +38,7 @@ public class SerbleAuthenticationHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     ITokenService tokens,
+    IOidcTokenService oidcTokens,
     IAppApiKeyRepository apiKeys,
     IAccountStateService accountState)
     : AuthenticationHandler<SerbleAuthenticationOptions>(options, logger, encoder) {
@@ -133,7 +135,7 @@ public class SerbleAuthenticationHandler(
     private async Task<AuthenticateResult> AuthenticateAsApp(string token) {
         if (!tokens.ValidateAccessToken(token, out string? appUserId, out string? appId, out string scope,
                 out DateTime? issuedAt))
-            return AuthenticateResult.Fail("Invalid app access token");
+            return await AuthenticateAsOidcApp(token);
         // An app token acts on behalf of a user, so disabling the account stops the app's token too.
         // A third-party app holding a refresh token will exchange it for a fresh access token and
         // carry on; ending that is what de-authorising the app is for.
@@ -148,6 +150,24 @@ public class SerbleAuthenticationHandler(
         // appid is absent on tokens issued before it was added; official-app checks treat those as non-official.
         if (!string.IsNullOrEmpty(appId)) claims.Add(new Claim("appid", appId));
         return BuildTicket(claims);
+    }
+
+    /// <summary>
+    /// An OIDC access token gets the same ticket as a legacy app token. Its scope list mixes OIDC
+    /// scopes with Serble permission ids; only the latter become the bitmask the API checks.
+    /// </summary>
+    private async Task<AuthenticateResult> AuthenticateAsOidcApp(string token) {
+        if (!oidcTokens.ValidateAccessToken(token, out OidcAccessTokenInfo? info) || info == null)
+            return AuthenticateResult.Fail("Invalid app access token");
+        if (!await accountState.IsTokenUsable(info.UserId, info.IssuedAt))
+            return AuthenticateResult.Fail("Account is disabled or token has been revoked");
+
+        return BuildTicket([
+            new Claim("userid",    info.UserId),
+            new Claim("auth_type", "App"),
+            new Claim("scope",     ScopeHandler.ListOfScopeIdsToString(OidcScopes.Parse(info.Scope))),
+            new Claim("appid",     info.ClientId)
+        ]);
     }
 
     private AuthenticateResult BuildTicket(List<Claim> claims) {

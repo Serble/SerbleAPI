@@ -27,7 +27,7 @@ public class OidcDiscoveryController(IOptions<OidcSettings> settings, IOidcKeySe
             token_endpoint                        = $"{Issuer}/api/v1/oauth/token",
             userinfo_endpoint                     = $"{Issuer}/api/v1/oauth/userinfo",
             jwks_uri                              = $"{Issuer}/.well-known/jwks.json",
-            scopes_supported                      = OidcScopes.All,
+            scopes_supported                      = OidcScopes.Supported,
             response_types_supported              = new[] { "code" },
             response_modes_supported              = new[] { "query" },
             grant_types_supported                 = new[] { "authorization_code", "refresh_token" },

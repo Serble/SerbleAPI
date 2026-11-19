@@ -66,12 +66,19 @@ public class CrossAppRulesTests {
     }
 
     [Fact]
-    public void OidcScopesFor_AlwaysIdentityAndRefresh_EmailOnlyWithAccountInfo() {
-        Assert.Equal(["openid", "profile", "email", "offline_access"], CrossAppRules.OidcScopesFor(["user_info"]));
-        Assert.Equal(["openid", "profile", "email", "offline_access"], CrossAppRules.OidcScopesFor(["full_access"]));
-        Assert.Equal(["openid", "profile", "offline_access"], CrossAppRules.OidcScopesFor(["file_host", "vault"]));
+    public void OidcScopesFor_IdentityRefreshAndPermissions_EmailOnlyWithAccountInfo() {
+        Assert.Equal(["openid", "profile", "email", "offline_access", "user_info"],
+            CrossAppRules.OidcScopesFor(["user_info"]));
+        Assert.Equal(["openid", "profile", "email", "offline_access", "full_access"],
+            CrossAppRules.OidcScopesFor(["full_access"]));
+        Assert.Equal(["openid", "profile", "offline_access", "file_host", "vault"],
+            CrossAppRules.OidcScopesFor(["file_host", "vault"]));
         Assert.Equal(["openid", "profile", "offline_access"], CrossAppRules.OidcScopesFor([]));
     }
+
+    [Fact]
+    public void OidcScopesFor_DropsUnknownScopes() =>
+        Assert.Equal(["openid", "profile", "offline_access", "vault"], CrossAppRules.OidcScopesFor(["groups", "vault", "bogus"]));
 
     [Fact]
     public void TrySetScopes_AcceptsSerblePermissionsOnly() {

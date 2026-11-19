@@ -38,17 +38,17 @@ public static class CrossAppRules {
     }
 
     /// <summary>
-    /// What a cross-app code grants when the target redeems it through OIDC. OIDC access tokens
-    /// are only accepted at userinfo, so Serble permissions beyond who the user is don't apply:
-    /// the target always gets identity plus a refresh token (as a legacy redemption always does),
-    /// and the email claim when it was given the account-information permission.
+    /// What a cross-app code grants when the target redeems it through OIDC: identity plus a
+    /// refresh token (as a legacy redemption always gets), the email claim when it was given the
+    /// account-information permission, and the Serble permissions themselves for the API.
     /// </summary>
     public static string[] OidcScopesFor(IEnumerable<string> legacyScopes) {
-        string[] scopes = legacyScopes.ToArray();
+        string[] scopes = legacyScopes.Where(s => ScopeHandler.Scopes.Contains(s)).Distinct().ToArray();
         bool accountInfo = scopes.Contains("user_info") || scopes.Contains("full_access");
-        return accountInfo
+        string[] identity = accountInfo
             ? [OidcScopes.OpenId, OidcScopes.Profile, OidcScopes.Email, OidcScopes.OfflineAccess]
             : [OidcScopes.OpenId, OidcScopes.Profile, OidcScopes.OfflineAccess];
+        return [..identity, ..scopes];
     }
 
     /// <summary>

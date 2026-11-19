@@ -31,8 +31,7 @@ public class OidcTokenService(
             new Claim("scope", scope),
             new Claim("token_type", AccessTokenType)
         ];
-        // Audience = issuer: the access token is consumed by Serble's own userinfo endpoint.
-        return Generate(claims, settings.Value.Issuer, settings.Value.AccessTokenLifetimeSeconds);
+        return Generate(claims, settings.Value.EffectiveApiAudience, settings.Value.AccessTokenLifetimeSeconds);
     }
 
     public bool ValidateAccessToken(string token, out OidcAccessTokenInfo? info) {
@@ -44,7 +43,7 @@ public class OidcTokenService(
                 ValidateIssuer           = true,
                 ValidateAudience         = true,
                 ValidIssuer              = settings.Value.Issuer,
-                ValidAudience            = settings.Value.Issuer,
+                ValidAudience            = settings.Value.EffectiveApiAudience,
                 IssuerSigningKeys        = keys.GetPublicJsonWebKeySet().Keys,
                 ValidAlgorithms          = [SecurityAlgorithms.RsaSha256]
             }, out SecurityToken validated);

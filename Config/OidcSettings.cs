@@ -10,6 +10,15 @@ public class OidcSettings {
     public string Issuer { get; set; } = null!;
     public OidcSigningKeySettings[] SigningKeys { get; set; } = [];
 
+    /// <summary>
+    /// The <c>aud</c> of OIDC access tokens: the Serble API, the only resource server that accepts
+    /// them. Defaults to <c>{Issuer}/api</c>.
+    /// </summary>
+    public string? ApiAudience { get; set; }
+
+    public string EffectiveApiAudience =>
+        string.IsNullOrWhiteSpace(ApiAudience) ? Issuer.TrimEnd('/') + "/api" : ApiAudience;
+
     public int AuthorizationCodeLifetimeSeconds { get; set; } = 300;
     public int AccessTokenLifetimeSeconds { get; set; } = 3600;
     public int IdTokenLifetimeSeconds { get; set; } = 900;
